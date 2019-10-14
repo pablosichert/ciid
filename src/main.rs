@@ -1,5 +1,5 @@
-use clap::{App, Arg};
 use chrono::DateTime;
+use clap::{App, Arg};
 use sha2::Digest;
 
 #[derive(Debug)]
@@ -54,7 +54,7 @@ fn sortable_base_16(data: &[u8]) -> String {
     return result;
 }
 
-fn get_timestamp(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn get_timestamp(file_path: &str) -> Result<[u8; 8], Box<dyn std::error::Error>> {
     let output = std::process::Command::new("exiftool")
             .arg("-p")
             .arg(r#"${dateTimeOriginal#;DateFmt("%Y-%m-%d %H:%M:%S")}.${subSecTimeOriginal} ${dateTimeOriginal#;DateFmt("%z")}"#)
@@ -65,7 +65,7 @@ fn get_timestamp(file_path: &str) -> Result<String, Box<dyn std::error::Error>> 
 
     if stderr != "" {
         return Err(Box::new(Error {
-            message: stderr.to_owned()
+            message: stderr.to_owned(),
         }));
     }
 
@@ -76,13 +76,12 @@ fn get_timestamp(file_path: &str) -> Result<String, Box<dyn std::error::Error>> 
 
     let timestamp = DateTime::parse_from_str(&timestamp, "%Y-%m-%d %H:%M:%S%.f %z")?;
     let timestamp = timestamp.timestamp_millis();
-    let timestamp = unsafe { std::mem::transmute::<_, [u8;8]>(timestamp.to_be()) };
-    let timestamp = sortable_base_16(&timestamp[2..]);
+    let timestamp = unsafe { std::mem::transmute::<_, [u8; 8]>(timestamp.to_be()) };
 
     Ok(timestamp)
 }
 
-fn get_fingerprint(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn get_fingerprint(file_path: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
     let image = rawloader::decode_file(file_path)?;
 
     let data: Vec<u8> = match image.data {
@@ -95,9 +94,10 @@ fn get_fingerprint(file_path: &str) -> Result<String, Box<dyn std::error::Error>
 
     let sha256 = hasher.result();
 
-    let identifier = sortable_base_16(&sha256);
+    let mut array: [u8; 32] = Default::default();
+    array.copy_from_slice(&sha256[..32]);
 
-    Ok(identifier)
+    Ok(array)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -112,7 +112,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let timestamp = get_timestamp(file_path)?;
     let fingerprint = get_fingerprint(file_path)?;
 
-    println!("{}-{}", timestamp, fingerprint);
+    println!(
+        "{}-{}",
+        sortable_base_16(&timestamp[2..]),
+        sortable_base_16(&fingerprint)
+    );
 
     Ok(())
 }
