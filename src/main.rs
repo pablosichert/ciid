@@ -15,7 +15,7 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-fn transmute_vec<Input, Output>(
+unsafe fn transmute_vec<Input, Output>(
     data: Vec<Input>,
 ) -> Result<Vec<Output>, Box<dyn std::error::Error>> {
     let size_input = std::mem::size_of::<Input>();
@@ -35,7 +35,7 @@ fn transmute_vec<Input, Output>(
 
     std::mem::forget(data);
 
-    let result = unsafe { Vec::from_raw_parts(pointer, length * factor, capacity * factor) };
+    let result = Vec::from_raw_parts(pointer, length * factor, capacity * factor);
 
     Ok(result)
 }
@@ -86,8 +86,8 @@ fn get_fingerprint(file_path: &str) -> Result<String, Box<dyn std::error::Error>
     let image = rawloader::decode_file(file_path)?;
 
     let data: Vec<u8> = match image.data {
-        rawloader::RawImageData::Float(data) => transmute_vec(data)?,
-        rawloader::RawImageData::Integer(data) => transmute_vec(data)?,
+        rawloader::RawImageData::Float(data) => unsafe { transmute_vec(data)? },
+        rawloader::RawImageData::Integer(data) => unsafe { transmute_vec(data)? },
     };
 
     let mut hasher = sha2::Sha256::new();
