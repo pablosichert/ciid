@@ -105,7 +105,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(Arg::with_name("file path").takes_value(true).required(true))
         .get_matches();
 
-    let file_path = matches.value_of("file path").ok_or("No file_path provided")?;
+    let file_path = matches
+        .value_of("file path")
+        .ok_or("No file path provided")?;
 
     let timestamp = get_timestamp(file_path)?;
     let fingerprint = get_fingerprint(file_path)?;
