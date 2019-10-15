@@ -69,11 +69,13 @@ fn exiftool(args: &[&str]) -> Result<String, Box<dyn std::error::Error>> {
     Ok(stdout.to_owned())
 }
 
-fn get_timestamp(file_path: &str) -> Result<[u8; 8], Box<dyn std::error::Error>> {
+fn get_timestamp(file_path: &std::path::Path) -> Result<[u8; 8], Box<dyn std::error::Error>> {
+    let path = file_path.to_str().ok_or_else(|| "Invalid file path")?;
+
     let output = exiftool(&[
         "-p",
         r#"${dateTimeOriginal#;DateFmt("%Y-%m-%d %H:%M:%S")}.${subSecTimeOriginal} ${dateTimeOriginal#;DateFmt("%z")}"#,
-        file_path
+        path
     ]).map_err(|error| format!("Failed running exiftool: {}", error))?;
 
     let timestamp = DateTime::parse_from_str(&output, "%Y-%m-%d %H:%M:%S%.f %z\n")
@@ -85,7 +87,7 @@ fn get_timestamp(file_path: &str) -> Result<[u8; 8], Box<dyn std::error::Error>>
     Ok(timestamp)
 }
 
-fn get_raw_image_data(file_path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+fn get_raw_image_data(file_path: &std::path::Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let image = rawloader::decode_file(file_path)?;
 
     let data: Vec<u8> = match image.data {
@@ -97,7 +99,7 @@ fn get_raw_image_data(file_path: &str) -> Result<Vec<u8>, Box<dyn std::error::Er
     Ok(data)
 }
 
-fn get_fingerprint(file_path: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+fn get_fingerprint(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std::error::Error>> {
     let data = get_raw_image_data(file_path)
         .map_err(|error| format!("Failed getting raw image data: {}", error))?;
 
@@ -121,10 +123,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .value_of("file path")
         .ok_or("No file path provided")?;
 
-    let timestamp = get_timestamp(file_path)
+    let file_path = std::path::Path::new(file_path)
+        .canonicalize()
+        .map_err(|error| format!("Invalid file path: {}", error))?;
+
+    let timestamp = get_timestamp(&file_path)
         .map_err(|error| format!("Failed generating timestamp data: {}", error))?;
 
-    let fingerprint = get_fingerprint(file_path)
+    let fingerprint = get_fingerprint(&file_path)
         .map_err(|error| format!("Failed generating fingerprint data: {}", error))?;
 
     println!(
