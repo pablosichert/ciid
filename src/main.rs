@@ -85,7 +85,7 @@ fn get_timestamp(file_path: &str) -> Result<[u8; 8], Box<dyn std::error::Error>>
     Ok(timestamp)
 }
 
-fn get_fingerprint(file_path: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+fn get_raw_image_data(file_path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let image = rawloader::decode_file(file_path)?;
 
     let data: Vec<u8> = match image.data {
@@ -93,6 +93,13 @@ fn get_fingerprint(file_path: &str) -> Result<[u8; 32], Box<dyn std::error::Erro
         rawloader::RawImageData::Integer(data) => unsafe { transmute_vec(data) },
     }
     .map_err(|error| format!("Failed transmuting data: {}", error))?;
+
+    Ok(data)
+}
+
+fn get_fingerprint(file_path: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    let data = get_raw_image_data(file_path)
+        .map_err(|error| format!("Failed getting raw image data: {}", error))?;
 
     let mut hasher = sha2::Sha256::new();
     hasher.input(data);
