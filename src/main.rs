@@ -1,5 +1,7 @@
 use chrono::DateTime;
 use clap::{App, Arg};
+use image;
+use regex;
 use sha2::Digest;
 
 unsafe fn transmute_vec<Input, Output>(
@@ -87,7 +89,20 @@ fn get_timestamp(file_path: &std::path::Path) -> Result<[u8; 8], Box<dyn std::er
     Ok(timestamp)
 }
 
-fn get_raw_image_data(file_path: &std::path::Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+fn get_raw_image_data_from_jpeg(
+    file_path: &std::path::Path,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let image =
+        image::open(file_path).map_err(|error| format!("Failed opening JPEG image: {}", error))?;
+
+    let data = image.raw_pixels();
+
+    Ok(data)
+}
+
+fn get_raw_image_data_from_raw(
+    file_path: &std::path::Path,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let image = rawloader::decode_file(file_path)?;
 
     let data: Vec<u8> = match image.data {
@@ -95,6 +110,29 @@ fn get_raw_image_data(file_path: &std::path::Path) -> Result<Vec<u8>, Box<dyn st
         rawloader::RawImageData::Integer(data) => unsafe { transmute_vec(data) },
     }
     .map_err(|error| format!("Failed transmuting data: {}", error))?;
+
+    Ok(data)
+}
+
+fn get_raw_image_data(file_path: &std::path::Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let extension = file_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .ok_or_else(|| {
+            "Failed getting file extension, which is necessary to determine the file type"
+        })?;
+
+    let data = if regex::Regex::new("(?i)jpe?g")?.is_match(extension) {
+        get_raw_image_data_from_jpeg(file_path)
+    } else {
+        get_raw_image_data_from_raw(file_path)
+    }
+    .map_err(|error| {
+        format!(
+            "Failed getting raw image data from .{} file: {}",
+            extension, error
+        )
+    })?;
 
     Ok(data)
 }
