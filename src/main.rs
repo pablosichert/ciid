@@ -143,20 +143,22 @@ fn get_raw_image_data_from_raw(
 fn get_raw_image_data(file_path: &std::path::Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let extension = file_path
         .extension()
-        .and_then(|extension| extension.to_str())
-        .ok_or_else(|| {
-            "Failed getting file extension, which is necessary to determine the file type"
-        })?;
+        .and_then(|extension| extension.to_str());
 
-    let data = if regex::Regex::new("(?i)jpe?g")?.is_match(extension) {
-        get_raw_image_data_from_jpeg(file_path)
-    } else {
-        get_raw_image_data_from_raw(file_path)
+    let data = match extension {
+        Some(extension) if regex::Regex::new("(?i)jpe?g")?.is_match(extension) => {
+            get_raw_image_data_from_jpeg(file_path)
+        }
+        _ => get_raw_image_data_from_raw(file_path),
     }
     .map_err(|error| {
         format!(
-            "Failed getting raw image data from .{} file: {}",
-            extension, error
+            "Failed getting raw image data from {} file: {}",
+            extension.map_or_else(
+                || "<no extension>".to_owned(),
+                |extension| format!(".{}", extension)
+            ),
+            error
         )
     })?;
 
