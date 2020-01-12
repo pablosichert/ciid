@@ -66,20 +66,24 @@ fn get_timestamp(file_path: &std::path::Path) -> Result<[u8; 8], Box<dyn std::er
     Ok(timestamp)
 }
 
-fn get_raw_image_data_from_jpeg(
+fn fingerprint_image_jpeg(
     file_path: &std::path::Path,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    hasher: &mut sha2::Sha256,
+) -> Result<(), Box<dyn std::error::Error>> {
     let image =
         image::open(file_path).map_err(|error| format!("Failed opening JPEG image: {}", error))?;
 
     let data = image.raw_pixels();
 
-    Ok(data)
+    hasher.input(data);
+
+    Ok(())
 }
 
-fn get_raw_image_data_from_raw(
+fn fingerprint_image_raw(
     file_path: &std::path::Path,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    hasher: &mut sha2::Sha256,
+) -> Result<(), Box<dyn std::error::Error>> {
     let file_path = match file_path.to_str() {
         None => Err(format!("Invalid file path: {:?}", file_path)),
         Some(file_path) => Ok(file_path),
@@ -87,12 +91,12 @@ fn get_raw_image_data_from_raw(
 
     let file_path = std::ffi::CString::new(file_path)?;
 
-    let data = unsafe {
+    unsafe {
         let flags = 0;
         let data = libraw::libraw_init(flags);
         let error_code = libraw::libraw_open_file(data, file_path.as_ptr());
 
-        let result = (|| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let result = (|| -> Result<(), Box<dyn std::error::Error>> {
             if error_code != 0 {
                 Err(
                     std::ffi::CStr::from_ptr(libraw::libraw_strerror(error_code))
@@ -126,10 +130,11 @@ fn get_raw_image_data_from_raw(
             let length = data.rawdata.sizes.raw_pitch * (data.rawdata.sizes.raw_height as u32);
 
             let raw_buffer =
-                std::slice::from_raw_parts(raw_image, std::convert::TryInto::try_into(length)?)
-                    .to_vec();
+                std::slice::from_raw_parts(raw_image, std::convert::TryInto::try_into(length)?);
 
-            Ok(raw_buffer)
+            hasher.input(raw_buffer);
+
+            Ok(())
         })();
 
         libraw::libraw_close(data);
@@ -137,23 +142,26 @@ fn get_raw_image_data_from_raw(
         result
     }?;
 
-    Ok(data)
+    Ok(())
 }
 
-fn get_raw_image_data(file_path: &std::path::Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+fn fingerprint_image(
+    file_path: &std::path::Path,
+    hasher: &mut sha2::Sha256,
+) -> Result<(), Box<dyn std::error::Error>> {
     let extension = file_path
         .extension()
         .and_then(|extension| extension.to_str());
 
-    let data = match extension {
+    match extension {
         Some(extension) if regex::Regex::new("(?i)jpe?g")?.is_match(extension) => {
-            get_raw_image_data_from_jpeg(file_path)
+            fingerprint_image_jpeg(file_path, hasher)
         }
-        _ => get_raw_image_data_from_raw(file_path),
+        _ => fingerprint_image_raw(file_path, hasher),
     }
     .map_err(|error| {
         format!(
-            "Failed getting raw image data from {} file: {}",
+            "Failed fingerprinting {} file: {}",
             extension.map_or_else(
                 || "<no extension>".to_owned(),
                 |extension| format!(".{}", extension)
@@ -162,15 +170,14 @@ fn get_raw_image_data(file_path: &std::path::Path) -> Result<Vec<u8>, Box<dyn st
         )
     })?;
 
-    Ok(data)
+    Ok(())
 }
 
 fn get_fingerprint(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std::error::Error>> {
-    let data = get_raw_image_data(file_path)
-        .map_err(|error| format!("Failed getting raw image data: {}", error))?;
-
     let mut hasher = sha2::Sha256::new();
-    hasher.input(data);
+
+    fingerprint_image(file_path, &mut hasher)
+        .map_err(|error| format!("Failed fingerprinting image: {}", error))?;
 
     let sha256 = hasher.result();
 
