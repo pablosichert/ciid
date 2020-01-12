@@ -190,6 +190,11 @@ fn get_fingerprint(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std:
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = App::new("CIID - Chronological Image Identifier")
         .arg(Arg::with_name("file path").takes_value(true).required(true))
+        .arg(
+            Arg::with_name("rename file")
+                .long("--rename-file")
+                .help("Renames the file to the generated identifier. Preserves the file extension"),
+        )
         .get_matches();
 
     let file_path = matches
@@ -206,11 +211,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fingerprint = get_fingerprint(&file_path)
         .map_err(|error| format!("Failed generating fingerprint data: {}", error))?;
 
-    println!(
+    let identifier = format!(
         "{}-{}",
         sortable_base_16(&timestamp[2..]),
         sortable_base_16(&fingerprint)
     );
+
+    let rename_file = matches.is_present("rename file");
+
+    if rename_file {
+        let extension = file_path
+            .extension()
+            .and_then(|extension| extension.to_str());
+
+        std::fs::rename(
+            file_path.clone(),
+            match extension {
+                Some(extension) => format!("{}.{}", identifier, extension),
+                None => identifier,
+            },
+        )?;
+    } else {
+        println!("{}", identifier);
+    }
 
     Ok(())
 }
