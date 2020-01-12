@@ -188,14 +188,18 @@ fn get_fingerprint(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std:
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let matches = App::new("CIID - Chronological Image Identifier")
-        .arg(Arg::with_name("file path").takes_value(true).required(true))
-        .arg(
-            Arg::with_name("rename file")
-                .long("--rename-file")
-                .help("Renames the file to the generated identifier. Preserves the file extension"),
-        )
-        .get_matches();
+    let matches =
+        App::new("CIID - Chronological Image Identifier")
+            .arg(Arg::with_name("file path").takes_value(true).required(true))
+            .arg(
+                Arg::with_name("verify name").long("--verify-name").help(
+                    "Verifies if the provided file name is equal to the generated fingerprint",
+                ),
+            )
+            .arg(Arg::with_name("rename file").long("--rename-file").help(
+                "Renames the file to the generated fingerprint. Preserves the file extension",
+            ))
+            .get_matches();
 
     let file_path = matches
         .value_of("file path")
@@ -217,20 +221,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sortable_base_16(&fingerprint)
     );
 
+    let verify_name = matches.is_present("verify name");
     let rename_file = matches.is_present("rename file");
 
-    if rename_file {
-        let extension = file_path
-            .extension()
-            .and_then(|extension| extension.to_str());
+    let fingerprint_file_path = {
+        let mut path = match file_path.parent() {
+            Some(parent) => parent.into(),
+            None => std::path::PathBuf::new(),
+        };
 
-        std::fs::rename(
-            file_path.clone(),
-            match extension {
-                Some(extension) => format!("{}.{}", identifier, extension),
-                None => identifier,
-            },
-        )?;
+        path.push(identifier.clone());
+
+        if let Some(extension) = file_path.extension() {
+            path.set_extension(extension);
+        }
+
+        path
+    };
+
+    if verify_name {
+        if file_path != fingerprint_file_path {
+            Err(format!(
+                r#"File name mismatch: Expected "{:?}", got "{:?}""#,
+                fingerprint_file_path, file_path
+            ))?;
+        }
+    } else if rename_file {
+        std::fs::rename(file_path.clone(), fingerprint_file_path)?;
     } else {
         println!("{}", identifier);
     }
