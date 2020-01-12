@@ -1,33 +1,10 @@
+mod libraw;
+
 use chrono::DateTime;
 use clap::{App, Arg};
 use image;
 use regex;
 use sha2::Digest;
-
-unsafe fn transmute_vec<Input, Output>(
-    data: Vec<Input>,
-) -> Result<Vec<Output>, Box<dyn std::error::Error>> {
-    let size_input = std::mem::size_of::<Input>();
-    let size_output = std::mem::size_of::<Output>();
-
-    let factor = size_input / size_output;
-
-    if size_output * factor != size_input {
-        Err("Input size must be a multiple of output size")
-    } else {
-        Ok(())
-    }?;
-
-    let pointer = data.as_ptr() as *mut Output;
-    let length = data.len();
-    let capacity = data.capacity();
-
-    std::mem::forget(data);
-
-    let result = Vec::from_raw_parts(pointer, length * factor, capacity * factor);
-
-    Ok(result)
-}
 
 fn sortable_base_16(data: &[u8]) -> String {
     let mut result = String::new();
@@ -103,13 +80,62 @@ fn get_raw_image_data_from_jpeg(
 fn get_raw_image_data_from_raw(
     file_path: &std::path::Path,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let image = rawloader::decode_file(file_path)?;
+    let file_path = match file_path.to_str() {
+        None => Err(format!("Invalid file path: {:?}", file_path)),
+        Some(file_path) => Ok(file_path),
+    }?;
 
-    let data: Vec<u8> = match image.data {
-        rawloader::RawImageData::Float(data) => unsafe { transmute_vec(data) },
-        rawloader::RawImageData::Integer(data) => unsafe { transmute_vec(data) },
-    }
-    .map_err(|error| format!("Failed transmuting data: {}", error))?;
+    let file_path = std::ffi::CString::new(file_path)?;
+
+    let data = unsafe {
+        let flags = 0;
+        let data = libraw::libraw_init(flags);
+        let error_code = libraw::libraw_open_file(data, file_path.as_ptr());
+
+        let result = (|| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+            if error_code != 0 {
+                Err(
+                    std::ffi::CStr::from_ptr(libraw::libraw_strerror(error_code))
+                        .to_string_lossy()
+                        .to_owned(),
+                )
+                .map_err(|error| format!("Failed opening file: {}", error))?;
+            }
+
+            let error_code = libraw::libraw_unpack(data);
+
+            if error_code != 0 {
+                Err(
+                    std::ffi::CStr::from_ptr(libraw::libraw_strerror(error_code))
+                        .to_string_lossy()
+                        .to_owned(),
+                )?;
+            }
+
+            let data = match data.as_ref() {
+                None => Err("Unexpected null pointer in LibRaw data")?,
+                Some(pointer) => pointer,
+            };
+
+            let raw_image = data.rawdata.raw_image as *mut u8;
+
+            if raw_image.is_null() {
+                Err("Unexpected null pointer in LibRaw data.rawdata.raw_image")?;
+            }
+
+            let length = data.rawdata.sizes.raw_pitch * (data.rawdata.sizes.raw_height as u32);
+
+            let raw_buffer =
+                std::slice::from_raw_parts(raw_image, std::convert::TryInto::try_into(length)?)
+                    .to_vec();
+
+            Ok(raw_buffer)
+        })();
+
+        libraw::libraw_close(data);
+
+        result
+    }?;
 
     Ok(data)
 }
