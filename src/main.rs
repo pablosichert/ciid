@@ -190,6 +190,7 @@ fn get_fingerprint(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std:
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches =
         App::new("CIID - Chronological Image Identifier")
+            .version(clap::crate_version!())
             .arg(Arg::with_name("file path").takes_value(true).required(true))
             .arg(
                 Arg::with_name("verify name").long("--verify-name").help(
