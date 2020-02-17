@@ -35,7 +35,7 @@ fn exiftool(args: &[&str]) -> Result<String, Box<dyn std::error::Error>> {
     Ok(stdout.to_owned())
 }
 
-fn get_timestamp(file_path: &std::path::Path) -> Result<[u8; 8], Box<dyn std::error::Error>> {
+fn get_timestamp(file_path: &std::path::Path) -> Result<i64, Box<dyn std::error::Error>> {
     let path = file_path.to_str().ok_or_else(|| "Invalid file path")?;
 
     let output = exiftool(&[
@@ -48,7 +48,6 @@ fn get_timestamp(file_path: &std::path::Path) -> Result<[u8; 8], Box<dyn std::er
         .map_err(|error| format!("Failed parsing exiftool timestamp: {}", error))?;
 
     let timestamp = timestamp.timestamp_millis();
-    let timestamp = unsafe { std::mem::transmute::<_, [u8; 8]>(timestamp.to_be()) };
 
     Ok(timestamp)
 }
@@ -205,7 +204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let identifier = format!(
         "{}-{}",
-        encodings::to_sortable_base_16(&timestamp[2..]),
+        encodings::to_sortable_base_16(&timestamp.to_be_bytes()[2..]),
         encodings::to_sortable_base_16(&fingerprint)
     );
 
