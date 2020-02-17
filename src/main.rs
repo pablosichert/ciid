@@ -139,11 +139,11 @@ fn hash_image_raw(
     Ok(())
 }
 
-/// Generate a hash for an image file. The hash is derived from the data contained in the image
-/// buffer, disregarding any metadata.
+/// Derive a hash for an image file. For the hash, only data contained in the image buffer is
+/// considered, disregarding any metadata.
 ///
 /// # Arguments
-/// * `file_path` – Path to file for which the hash should be generated.
+/// * `file_path` – Path to file for which the hash should be derived.
 fn hash_image(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std::error::Error>> {
     let mut hasher = sha2::Sha256::new();
 
@@ -183,12 +183,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(
             Arg::with_name("verify name")
                 .long("--verify-name")
-                .help("Verifies if the provided file name is equal to the generated hash"),
+                .help("Verifies if the provided file name is equal to the derived identifier"),
         )
         .arg(
             Arg::with_name("rename file")
                 .long("--rename-file")
-                .help("Renames the file to the generated hash. Preserves the file extension"),
+                .help("Renames the file to the derived identifier. Preserves the file extension"),
         )
         .get_matches();
 
@@ -201,10 +201,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|error| format!("Invalid file path: {}", error))?;
 
     let timestamp = get_timestamp(&file_path)
-        .map_err(|error| format!("Failed generating timestamp data: {}", error))?;
+        .map_err(|error| format!("Failed deriving timestamp data: {}", error))?;
 
-    let hash = hash_image(&file_path)
-        .map_err(|error| format!("Failed generating image hash: {}", error))?;
+    let hash =
+        hash_image(&file_path).map_err(|error| format!("Failed deriving image hash: {}", error))?;
 
     let identifier = format!(
         "{}-{}",
