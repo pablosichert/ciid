@@ -1,3 +1,4 @@
+mod encodings;
 mod libraw;
 
 use chrono::DateTime;
@@ -5,20 +6,6 @@ use clap::{App, Arg};
 use image;
 use regex;
 use sha2::Digest;
-
-fn sortable_base_16(data: &[u8]) -> String {
-    let mut result = String::new();
-
-    for byte in data {
-        let upper = (('a' as u8) + (byte >> 4)) as char;
-        let lower = (('a' as u8) + (byte & 0b00001111)) as char;
-
-        result.push(upper);
-        result.push(lower);
-    }
-
-    return result;
-}
 
 fn exiftool(args: &[&str]) -> Result<String, Box<dyn std::error::Error>> {
     let output = std::process::Command::new("exiftool")
@@ -218,8 +205,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let identifier = format!(
         "{}-{}",
-        sortable_base_16(&timestamp[2..]),
-        sortable_base_16(&fingerprint)
+        encodings::to_sortable_base_16(&timestamp[2..]),
+        encodings::to_sortable_base_16(&fingerprint)
     );
 
     let verify_name = matches.is_present("verify name");
