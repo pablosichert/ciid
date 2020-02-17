@@ -1,12 +1,16 @@
 mod encodings;
 mod libraw;
 
-use chrono::DateTime;
+use chrono::{DateTime, FixedOffset};
 use clap::{App, Arg};
 use image;
 use regex;
 use sha2::Digest;
 
+/// Calls the `exiftool` command line tool and returns the contents of stdout.
+///
+/// # Arguments
+/// * `args` – Command line arguments to be passed to `exiftool`.
 fn exiftool(args: &[&str]) -> Result<String, Box<dyn std::error::Error>> {
     let output = std::process::Command::new("exiftool")
         .args(args)
@@ -35,7 +39,13 @@ fn exiftool(args: &[&str]) -> Result<String, Box<dyn std::error::Error>> {
     Ok(stdout.to_owned())
 }
 
-fn get_timestamp(file_path: &std::path::Path) -> Result<i64, Box<dyn std::error::Error>> {
+/// Get the timestamp of a file based on EXIF-data.
+///
+/// # Arguments
+/// * `file_path` – Path to file for which the timestamp should be read and returned.
+fn get_timestamp(
+    file_path: &std::path::Path,
+) -> Result<DateTime<FixedOffset>, Box<dyn std::error::Error>> {
     let path = file_path.to_str().ok_or_else(|| "Invalid file path")?;
 
     let output = exiftool(&[
@@ -46,8 +56,6 @@ fn get_timestamp(file_path: &std::path::Path) -> Result<i64, Box<dyn std::error:
 
     let timestamp = DateTime::parse_from_str(&output, "%Y-%m-%d %H:%M:%S%.f %z\n")
         .map_err(|error| format!("Failed parsing exiftool timestamp: {}", error))?;
-
-    let timestamp = timestamp.timestamp_millis();
 
     Ok(timestamp)
 }
@@ -131,6 +139,11 @@ fn hash_image_raw(
     Ok(())
 }
 
+/// Generate a hash for an image file. The hash is derived from the data contained in the image
+/// buffer, disregarding any metadata.
+///
+/// # Arguments
+/// * `file_path` – Path to file for which the hash should be generated.
 fn hash_image(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std::error::Error>> {
     let mut hasher = sha2::Sha256::new();
 
@@ -195,7 +208,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let identifier = format!(
         "{}-{}",
-        encodings::to_sortable_base_16(&timestamp.to_be_bytes()[2..]),
+        encodings::to_sortable_base_16(&timestamp.timestamp_millis().to_be_bytes()[2..]),
         encodings::to_sortable_base_16(&hash)
     );
 

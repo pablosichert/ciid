@@ -1,3 +1,11 @@
+/// Encodes a buffer as string.
+///
+/// The goal of this encoding is to be reasonable compact, while keeping the ordering intact when
+/// interpreting the input data as an unsigned big endian integer vs alphabetically sorting the
+/// output string.
+///
+/// There are 16 possible characters that can be encoded in the range of [a-p]. Therefore, each byte
+/// in the input sequence will be encoded to two characters in the output string.
 pub fn to_sortable_base_16(data: &[u8]) -> String {
     let mut result = String::new();
 
