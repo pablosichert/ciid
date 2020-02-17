@@ -52,7 +52,7 @@ fn get_timestamp(file_path: &std::path::Path) -> Result<i64, Box<dyn std::error:
     Ok(timestamp)
 }
 
-fn fingerprint_image_jpeg(
+fn hash_image_jpeg(
     file_path: &std::path::Path,
     hasher: &mut sha2::Sha256,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -66,7 +66,7 @@ fn fingerprint_image_jpeg(
     Ok(())
 }
 
-fn fingerprint_image_raw(
+fn hash_image_raw(
     file_path: &std::path::Path,
     hasher: &mut sha2::Sha256,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -131,23 +131,22 @@ fn fingerprint_image_raw(
     Ok(())
 }
 
-fn fingerprint_image(
-    file_path: &std::path::Path,
-    hasher: &mut sha2::Sha256,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn hash_image(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    let mut hasher = sha2::Sha256::new();
+
     let extension = file_path
         .extension()
         .and_then(|extension| extension.to_str());
 
     match extension {
         Some(extension) if regex::Regex::new("(?i)jpe?g")?.is_match(extension) => {
-            fingerprint_image_jpeg(file_path, hasher)
+            hash_image_jpeg(file_path, &mut hasher)
         }
-        _ => fingerprint_image_raw(file_path, hasher),
+        _ => hash_image_raw(file_path, &mut hasher),
     }
     .map_err(|error| {
         format!(
-            "Failed fingerprinting {} file: {}",
+            "Failed hashing {} file: {}",
             extension.map_or_else(
                 || "<no extension>".to_owned(),
                 |extension| format!(".{}", extension)
@@ -156,37 +155,29 @@ fn fingerprint_image(
         )
     })?;
 
-    Ok(())
-}
-
-fn get_fingerprint(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std::error::Error>> {
-    let mut hasher = sha2::Sha256::new();
-
-    fingerprint_image(file_path, &mut hasher)
-        .map_err(|error| format!("Failed fingerprinting image: {}", error))?;
-
     let sha256 = hasher.result();
 
-    let mut fingerprint: [u8; 32] = Default::default();
-    fingerprint.copy_from_slice(&sha256);
+    let mut hash: [u8; 32] = Default::default();
+    hash.copy_from_slice(&sha256);
 
-    Ok(fingerprint)
+    Ok(hash)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let matches =
-        App::new("CIID - Chronological Image Identifier")
-            .version(clap::crate_version!())
-            .arg(Arg::with_name("file path").takes_value(true).required(true))
-            .arg(
-                Arg::with_name("verify name").long("--verify-name").help(
-                    "Verifies if the provided file name is equal to the generated fingerprint",
-                ),
-            )
-            .arg(Arg::with_name("rename file").long("--rename-file").help(
-                "Renames the file to the generated fingerprint. Preserves the file extension",
-            ))
-            .get_matches();
+    let matches = App::new("CIID - Chronological Image Identifier")
+        .version(clap::crate_version!())
+        .arg(Arg::with_name("file path").takes_value(true).required(true))
+        .arg(
+            Arg::with_name("verify name")
+                .long("--verify-name")
+                .help("Verifies if the provided file name is equal to the generated hash"),
+        )
+        .arg(
+            Arg::with_name("rename file")
+                .long("--rename-file")
+                .help("Renames the file to the generated hash. Preserves the file extension"),
+        )
+        .get_matches();
 
     let file_path = matches
         .value_of("file path")
@@ -199,19 +190,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let timestamp = get_timestamp(&file_path)
         .map_err(|error| format!("Failed generating timestamp data: {}", error))?;
 
-    let fingerprint = get_fingerprint(&file_path)
-        .map_err(|error| format!("Failed generating fingerprint data: {}", error))?;
+    let hash = hash_image(&file_path)
+        .map_err(|error| format!("Failed generating image hash: {}", error))?;
 
     let identifier = format!(
         "{}-{}",
         encodings::to_sortable_base_16(&timestamp.to_be_bytes()[2..]),
-        encodings::to_sortable_base_16(&fingerprint)
+        encodings::to_sortable_base_16(&hash)
     );
 
     let verify_name = matches.is_present("verify name");
     let rename_file = matches.is_present("rename file");
 
-    let fingerprint_file_path = {
+    let hash_file_path = {
         let mut path = match file_path.parent() {
             Some(parent) => parent.into(),
             None => std::path::PathBuf::new(),
@@ -227,14 +218,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     if verify_name {
-        if file_path != fingerprint_file_path {
+        if file_path != hash_file_path {
             Err(format!(
                 r#"File name mismatch: Expected "{:?}", got "{:?}""#,
-                fingerprint_file_path, file_path
+                hash_file_path, file_path
             ))?;
         }
     } else if rename_file {
-        std::fs::rename(file_path.clone(), fingerprint_file_path)?;
+        std::fs::rename(file_path.clone(), hash_file_path)?;
     } else {
         println!("{}", identifier);
     }
