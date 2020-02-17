@@ -177,9 +177,15 @@ fn hash_image(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std::erro
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let matches = App::new("CIID - Chronological Image Identifier")
+    let matches = App::new("ciid - Chronological Image Identifier")
         .version(clap::crate_version!())
-        .arg(Arg::with_name("file path").takes_value(true).required(true))
+        .about(&*("\n".to_owned() + clap::crate_description!()))
+        .arg(
+            Arg::with_name("file path")
+                .takes_value(true)
+                .required(true)
+                .help("Path to image file"),
+        )
         .arg(
             Arg::with_name("verify name")
                 .long("--verify-name")

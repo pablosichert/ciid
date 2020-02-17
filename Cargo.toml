@@ -2,6 +2,12 @@
 name = "ciid"
 version = "0.1.0"
 authors = ["Pablo Sichert <mail@pablosichert.com>"]
+description = """
+Utility to derive a chronologically sortable, unique identifier for images.
+
+The first part of the identifier encodes the creation date of the image (48 bit timestamp encoded in 12 characters), while the second part is a hash (256 bit hash encoded in 64 characters) based on the contents of the image buffer.
+
+The encoded characters in the output string are in the range of [a-p]."""
 edition = "2018"
 
 [dependencies]
