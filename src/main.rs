@@ -104,7 +104,7 @@ fn hash_image_jpeg(
     let image =
         image::open(file_path).map_err(|error| format!("Failed opening JPEG image: {}", error))?;
 
-    let data = image.raw_pixels();
+    let data = image.to_bytes();
 
     hasher.input(data);
 
