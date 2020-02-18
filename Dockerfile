@@ -8,13 +8,13 @@ RUN apt-get install -y \
     libtool \
     pkg-config \
     build-essential \
-    clang \
-    exiftool
+    clang
 COPY ./bin/ /root/ciid/bin/
 COPY ./src/ /root/ciid/src/
 COPY ./build.rs /root/ciid/
 COPY ./Cargo* /root/ciid/
 WORKDIR /root/ciid
+RUN ./bin/install-exiftool.sh
 RUN ./bin/install-libraw.sh
 ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
