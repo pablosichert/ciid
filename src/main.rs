@@ -294,11 +294,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     hash_file_path, file_path
                 ))?;
             }
-        } else if rename_file {
-            std::fs::rename(file_path.clone(), hash_file_path)?;
-        } else {
-            println!("{}", identifier);
         }
+
+        if rename_file {
+            std::fs::rename(file_path.clone(), hash_file_path)?;
+        }
+
+        println!("{}", identifier);
     }
 
     Ok(())
