@@ -221,6 +221,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arg::with_name("file path")
                 .takes_value(true)
                 .required(true)
+                .multiple(true)
                 .help("Path to image file"),
         )
         .arg(
@@ -235,63 +236,69 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
-    let file_path = matches
-        .value_of("file path")
+    let file_paths = matches
+        .values_of("file path")
         .ok_or("No file path provided")?;
 
-    let file_path = std::path::Path::new(file_path)
-        .canonicalize()
-        .map_err(|error| format!("Invalid file path: {}", error))?;
+    let file_paths = file_paths
+        .map(|file_path| {
+            std::path::Path::new(file_path)
+                .canonicalize()
+                .map_err(|error| format!("Invalid file path: {}", error))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
-    let timestamp = get_timestamp(&file_path)
-        .map_err(|error| format!("Failed deriving timestamp data: {}", error))?;
+    for file_path in file_paths {
+        let timestamp = get_timestamp(&file_path)
+            .map_err(|error| format!("Failed deriving timestamp data: {}", error))?;
 
-    let hash =
-        hash_image(&file_path).map_err(|error| format!("Failed deriving image hash: {}", error))?;
+        let hash = hash_image(&file_path)
+            .map_err(|error| format!("Failed deriving image hash: {}", error))?;
 
-    let encoding = {
-        let mut spec = data_encoding::Specification::new();
-        spec.symbols.push_str(ALPHABET);
-        spec.encoding()
-    }?;
+        let encoding = {
+            let mut spec = data_encoding::Specification::new();
+            spec.symbols.push_str(ALPHABET);
+            spec.encoding()
+        }?;
 
-    let timestamp_encoded = encode_timestamp(&encoding, &timestamp)?;
+        let timestamp_encoded = encode_timestamp(&encoding, &timestamp)?;
 
-    let identifier = format!(
-        "{}-{}",
-        &timestamp_encoded[timestamp_encoded.len() - 10..],
-        encoding.encode(&hash),
-    );
+        let identifier = format!(
+            "{}-{}",
+            &timestamp_encoded[timestamp_encoded.len() - 10..],
+            encoding.encode(&hash),
+        );
 
-    let verify_name = matches.is_present("verify name");
-    let rename_file = matches.is_present("rename file");
+        let verify_name = matches.is_present("verify name");
+        let rename_file = matches.is_present("rename file");
 
-    let hash_file_path = {
-        let mut path = match file_path.parent() {
-            Some(parent) => parent.into(),
-            None => std::path::PathBuf::new(),
+        let hash_file_path = {
+            let mut path = match file_path.parent() {
+                Some(parent) => parent.into(),
+                None => std::path::PathBuf::new(),
+            };
+
+            path.push(identifier.clone());
+
+            if let Some(extension) = file_path.extension() {
+                path.set_extension(extension);
+            }
+
+            path
         };
 
-        path.push(identifier.clone());
-
-        if let Some(extension) = file_path.extension() {
-            path.set_extension(extension);
+        if verify_name {
+            if file_path != hash_file_path {
+                Err(format!(
+                    r#"File name mismatch: Expected "{:?}", got "{:?}""#,
+                    hash_file_path, file_path
+                ))?;
+            }
+        } else if rename_file {
+            std::fs::rename(file_path.clone(), hash_file_path)?;
+        } else {
+            println!("{}", identifier);
         }
-
-        path
-    };
-
-    if verify_name {
-        if file_path != hash_file_path {
-            Err(format!(
-                r#"File name mismatch: Expected "{:?}", got "{:?}""#,
-                hash_file_path, file_path
-            ))?;
-        }
-    } else if rename_file {
-        std::fs::rename(file_path.clone(), hash_file_path)?;
-    } else {
-        println!("{}", identifier);
     }
 
     Ok(())

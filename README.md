@@ -66,7 +66,7 @@ $ cargo install ciid
 ## Usage
 
 ```bash
-$ ciid [FLAGS] <file path>
+$ ciid [FLAGS] <file path>...
 ```
 
 ## Flags
@@ -80,9 +80,9 @@ $ ciid [FLAGS] <file path>
 
 ## Arguments
 
-| Name          | Description        |
-| ------------- | ------------------ |
-| \<file path\> | Path to image file |
+| Name             | Description        |
+| ---------------- | ------------------ |
+| \<file path\>... | Path to image file |
 
 ## Prior Art
 
