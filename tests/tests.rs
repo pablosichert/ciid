@@ -12,12 +12,12 @@ fn test_verify_name() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     for file in files {
-        let command = std::process::Command::new("ciid")
+        let output = std::process::Command::new("./target/debug/ciid")
             .arg("--verify-name")
             .arg(file)
             .output()?;
 
-        assert!(command.status.success());
+        assert!(output.status.success());
     }
 
     Ok(())
