@@ -1,8 +1,5 @@
-[package]
-name = "ciid"
-version = "0.1.0"
-authors = ["Pablo Sichert <mail@pablosichert.com>"]
-description = """
+# ciid - Chronological Image Identifier
+
 `ciid` is a utility to derive a chronologically sortable, unique identifier for
 images.
 
@@ -46,17 +43,47 @@ Following criteria were considered when choosing the character set:
   value should appear strictly after lower ones)
 - no distinction between upper- und lowercase, avoiding issues on case
   insensitive file systems
-- be safe to use in URLs"""
-edition = "2018"
+- be safe to use in URLs
 
-[dependencies]
-bindgen = "0.53.1"
-clap = "2.33"
-chrono = "0.4.10"
-data-encoding = "2.1"
-image = "0.23.0"
-regex = "1.3"
-sha2 = "0.8.1"
+## Installation
 
-[build-dependencies]
-bindgen = "0.53.1"
+### Prerequisites
+
+- [Rust toolchain](https://rustup.rs/)
+- [exiftool](https://github.com/exiftool/exiftool)
+- [LibRaw](https://github.com/LibRaw/LibRaw)
+
+For help with installing the dependencies, have a look at the
+[Dockerfile](https://github.com/pablosichert/ciid/blob/master/Dockerfile).
+
+Install the `ciid` binary onto your system via
+[`cargo`](https://doc.rust-lang.org/cargo/commands/cargo-install.html):
+
+```bash
+$ cargo install ciid
+```
+
+## Usage
+
+```bash
+$ ciid [FLAGS] <file path>
+```
+
+## Flags
+
+| Short | Long          | Description                                                              |
+| ----- | ------------- | ------------------------------------------------------------------------ |
+| -h    | --help        | Prints help information                                                  |
+|       | --rename-file | Renames the file to the derived identifier. Preserves the file extension |
+| -V    | --version     | Prints version information                                               |
+|       | --verify-name | Verifies if the provided file name is equal to the derived identifier    |
+
+## Arguments
+
+| Name          | Description        |
+| ------------- | ------------------ |
+| \<file path\> | Path to image file |
+
+## Prior Art
+
+The timestamp used in `ciid` was inspired by [ulid](https://github.com/ulid/spec).
