@@ -17,6 +17,7 @@ fn test_verify_name() -> Result<(), Box<dyn std::error::Error>> {
             .arg(file)
             .output()?;
 
+        assert_eq!("", std::str::from_utf8(&output.stderr)?);
         assert!(output.status.success());
     }
 
@@ -41,6 +42,7 @@ fn test_verify_name_multiple() -> Result<(), Box<dyn std::error::Error>> {
         .args(files)
         .output()?;
 
+    assert_eq!("", std::str::from_utf8(&output.stderr)?);
     assert!(output.status.success());
 
     Ok(())
