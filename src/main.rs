@@ -1,4 +1,3 @@
-mod encodings;
 mod libraw;
 
 use chrono::{DateTime, FixedOffset};
@@ -6,6 +5,44 @@ use clap::{App, Arg};
 use image;
 use regex;
 use sha2::Digest;
+use std::convert::TryInto;
+
+/// Based on Douglas Crockford's base32 alphabet: https://www.crockford.com/base32.html.
+const ALPHABET: &'static str = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/// Encodes a timestamp to a string.
+///
+/// The byte representation of the timestamp is padded with zeros on the left if the amount of bits
+/// needed to represent it can not exactly be encoded with the given encoding.
+///
+/// # Arguments
+/// * `encoding` – Encoding used to encode the timestamp.
+/// * `timestamp` – The timestamp to be encoded.
+fn encode_timestamp(
+    encoding: &data_encoding::Encoding,
+    timestamp: &DateTime<FixedOffset>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let millis: u64 = timestamp
+        .timestamp_millis()
+        .try_into()
+        .map_err(|_| "Timestamps before 1970-01-01T00:00:00Z are not supported")?;
+
+    let bytes = millis.to_be_bytes().to_vec();
+
+    // Pad bytes width zeros on the left
+    let bytes = {
+        let chunk_size = encoding.bit_width();
+        let num_bytes = bytes.len();
+        let num_chunks = num_bytes / chunk_size + (if num_bytes % chunk_size == 0 { 0 } else { 1 });
+        let num_padded = (num_chunks * chunk_size) - num_bytes;
+
+        let mut padded = vec![0; num_padded];
+        padded.extend(bytes);
+        padded
+    };
+
+    Ok(encoding.encode(&bytes))
+}
 
 /// Calls the `exiftool` command line tool and returns the contents of stdout.
 ///
@@ -212,10 +249,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hash =
         hash_image(&file_path).map_err(|error| format!("Failed deriving image hash: {}", error))?;
 
+    let encoding = {
+        let mut spec = data_encoding::Specification::new();
+        spec.symbols.push_str(ALPHABET);
+        spec.encoding()
+    }?;
+
+    let timestamp_encoded = encode_timestamp(&encoding, &timestamp)?;
+
     let identifier = format!(
         "{}-{}",
-        encodings::to_sortable_base_16(&timestamp.timestamp_millis().to_be_bytes()[2..]),
-        encodings::to_sortable_base_16(&hash)
+        &timestamp_encoded[timestamp_encoded.len() - 10..],
+        encoding.encode(&hash),
     );
 
     let verify_name = matches.is_present("verify name");
@@ -250,4 +295,94 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! test_encode_timestamp {
+        ($test_name:ident, $input:literal, $expected:literal) => {
+            #[test]
+            fn $test_name() -> Result<(), Box<dyn std::error::Error>> {
+                let encoding = {
+                    let mut spec = data_encoding::Specification::new();
+                    spec.symbols.push_str(ALPHABET);
+                    spec.encoding()
+                }?;
+
+                let timestamp = DateTime::parse_from_str($input, "%Y-%m-%d %H:%M:%S%.f %z\n")?;
+
+                assert_eq!($expected, encode_timestamp(&encoding, &timestamp)?);
+
+                Ok(())
+            }
+        };
+    }
+
+    test_encode_timestamp!(
+        test_encode_timestamp_unix_time,
+        "1970-1-1 00:00:00.000 +0000",
+        "0000000000000000"
+    );
+
+    test_encode_timestamp!(
+        test_encode_timestamp_unix_time_plus_1_millisecond,
+        "1970-1-1 00:00:00.001 +0000",
+        "0000000000000001"
+    );
+
+    test_encode_timestamp!(
+        test_encode_timestamp_unix_time_plus_32_milliseconds,
+        "1970-1-1 00:00:00.032 +0000",
+        "0000000000000010"
+    );
+
+    test_encode_timestamp!(
+        test_encode_timestamp_unix_time_plus_1_second,
+        "1970-1-1 00:00:01.000 +0000",
+        "00000000000000Z8"
+    );
+
+    test_encode_timestamp!(
+        test_encode_timestamp_unix_time_plus_1_minute,
+        "1970-1-1 00:01:00.000 +0000",
+        "0000000000001TK0"
+    );
+
+    test_encode_timestamp!(
+        test_encode_timestamp_unix_time_plus_1_hour,
+        "1970-1-1 01:00:00.000 +0000",
+        "000000000003DVM0"
+    );
+
+    test_encode_timestamp!(
+        test_encode_timestamp_unix_time_plus_1_day,
+        "1970-1-2 00:00:00.000 +0000",
+        "00000000002JCQ00"
+    );
+
+    test_encode_timestamp!(
+        test_encode_timestamp_unix_time_plus_1_month,
+        "1970-2-1 00:00:00.000 +0000",
+        "0000000002FTA900"
+    );
+
+    test_encode_timestamp!(
+        test_encode_timestamp_unix_time_plus_1_year,
+        "1971-1-1 00:00:00.000 +0000",
+        "000000000XBV2B00"
+    );
+
+    test_encode_timestamp!(
+        test_encode_timestamp_unix_time_tz_minus_1,
+        "1969-12-31 23:00:00.000 -0100",
+        "0000000000000000"
+    );
+
+    test_encode_timestamp!(
+        test_encode_timestamp_unix_time_tz_plus_1,
+        "1970-1-1 01:00:00.000 +0100",
+        "0000000000000000"
+    );
 }
