@@ -1,7 +1,17 @@
-# ciid - Chronological Image Identifier
+<h1 align="center">
+  ciid - Chronological Image Identifier
+</h1>
 
-`ciid` is a utility to derive a chronologically sortable, unique identifier for
-images.
+<p align="center">
+  <code>ciid</code> is a utility to derive a chronologically sortable, unique identifier for images.<br />
+  <br/>
+  <a href="https://github.com/pablosichert/ciid/actions">
+    <img alt="ciid build status" src="https://img.shields.io/github/workflow/status/pablosichert/ciid/CI"/>
+  </a>
+  <a href="https://crates.io/crates/ciid">
+    <img alt="ciid on crates.io" src="https://img.shields.io/crates/v/ciid.svg"/>
+  </a>
+</p>
 
 Usually, digital cameras and phones assign file names to images with a sequence
 of only 4 digits (e.g. `IMG_1234.dng`). Those names will easily clash for any
