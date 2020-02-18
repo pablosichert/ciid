@@ -47,6 +47,12 @@ Following criteria were considered when choosing the character set:
 - no distinction between upper- und lowercase, avoiding issues on case
   insensitive file systems
 - be safe to use in URLs"""
+documentation = "https://github.com/pablosichert/ciid"
+homepage = "https://github.com/pablosichert/ciid"
+repository = "https://github.com/pablosichert/ciid"
+readme = "README.md"
+keywords = ["chronological", "sortable", "unique", "image", "identifier"]
+categories = ["command-line-utilities", "filesystem", "multimedia", "multimedia::encoding", "multimedia::images"]
 edition = "2018"
 
 [dependencies]
