@@ -3,13 +3,21 @@
 </h1>
 
 <p align="center">
-  <code>ciid</code> is a utility to derive a chronologically sortable, unique identifier for images.<br />
+  <code>ciid</code> is a utility to derive a chronologically sortable, unique
+  identifier for images.
+  <br />
   <br/>
   <a href="https://github.com/pablosichert/ciid/actions">
-    <img alt="ciid build status" src="https://img.shields.io/github/workflow/status/pablosichert/ciid/CI"/>
+    <img
+      alt="ciid build status"
+      src="https://img.shields.io/github/workflow/status/pablosichert/ciid/CI"
+    />
   </a>
   <a href="https://crates.io/crates/ciid">
-    <img alt="ciid on crates.io" src="https://img.shields.io/crates/v/ciid.svg"/>
+    <img
+      alt="ciid on crates.io"
+      src="https://img.shields.io/crates/v/ciid.svg"
+    />
   </a>
 </p>
 
@@ -98,14 +106,24 @@ $ ciid [FLAGS] <file path>...
 
 #### Why not use a more human-readable format for the timestamp?
 
-Why do we encode the timestamp as `0A1B2C3D4E` instead of, e.g. `2319-11-21 14:22:59.726`? The timestamp represents an unambiguous<sup><a name="footnote-leap-seconds">1</a></sup> single point in time, whereas the date string needs to be contextualized with a timezone. That means that you would either need to annotate the date string with a time zone or change the file name every time you are on a system which uses a different timezone.
+Why do we encode the timestamp as `0A1B2C3D4E` instead of e.g.
+`2319-11-21 14:22:59.726`? The timestamp represents an
+unambiguous<a href="#footnote-leap-seconds"><sup>1</sup></a> single point in
+time, whereas the date string needs to be contextualized with a timezone. That
+means that you would either need to annotate the date string with a time zone or
+change the file name every time you are on a system which uses a different
+timezone.
 
 Apart from that, the former encoding is significantly more compact.
 
-While unfortunately it's not easy to derive the actual date from the encoded timestamp just by looking at it, you can compare two encoded timestamps chronologically by sorting them alphabetically.
+While unfortunately it's not easy to derive the actual date from the encoded
+timestamp just by looking at it, you can compare two encoded timestamps
+chronologically by sorting them alphabetically.
 
-<sup>[1](#footnote-leap-seconds)</sup> ignoring [leap-seconds](https://en.wikipedia.org/wiki/Leap_second).
+<sup id="footnote-leap-seconds">1</sup> ignoring
+[leap-seconds](https://en.wikipedia.org/wiki/Leap_second).
 
 ## Prior Art
 
-The timestamp used in `ciid` was inspired by [ulid](https://github.com/ulid/spec).
+The timestamp used in `ciid` was inspired by
+[ulid](https://github.com/ulid/spec).
