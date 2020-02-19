@@ -94,6 +94,18 @@ $ ciid [FLAGS] <file path>...
 | ---------------- | ------------------ |
 | \<file path\>... | Path to image file |
 
+## FAQ
+
+### Why not use a more human-readable format for the timestamp?
+
+Why do we encode the timestamp as `0A1B2C3D4E` instead of, e.g. `2319-11-21 14:22:59.726`? The timestamp represents an unambiguous<sup><a name="footnote-leap-seconds">1</a></sup> single point in time, whereas the date string needs to be contextualized with a timezone. That means that you would either need to annotate the date string with a time zone or change the file name every time you are on a system which uses a different timezone.
+
+Apart from that, the former encoding is significantly more compact.
+
+While unfortunately it's not easy to derive the actual date from the encoded timestamp just by looking at it, you can compare two encoded timestamps chronologically by sorting them alphabetically.
+
+<sup>[1](#footnote-leap-seconds)</sup> ignoring [leap-seconds](https://en.wikipedia.org/wiki/Leap_second).
+
 ## Prior Art
 
 The timestamp used in `ciid` was inspired by [ulid](https://github.com/ulid/spec).
