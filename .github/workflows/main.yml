@@ -1,0 +1,18 @@
+name: CI
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1.0.5
+    - name: Install ExifTool
+      run: sudo ./bin/install-exiftool.sh
+    - name: Install LibRaw
+      run: sudo ./bin/install-libraw.sh
+    - name: Cargo test
+      env:
+        LD_LIBRARY_PATH: "$LD_LIBRARY_PATH:/usr/local/lib"
+      run: cargo test
