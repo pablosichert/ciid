@@ -8,7 +8,7 @@ use sha2::Digest;
 use std::convert::TryInto;
 
 /// Based on Douglas Crockford's base32 alphabet: https://www.crockford.com/base32.html.
-const ALPHABET: &'static str = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const ALPHABET: &'static [u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 /// Encodes a timestamp to a string.
 ///
@@ -257,7 +257,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let encoding = {
             let mut spec = data_encoding::Specification::new();
-            spec.symbols.push_str(ALPHABET);
+            spec.symbols
+                .push_str(std::str::from_utf8(ALPHABET).unwrap());
             spec.encoding()
         }?;
 
@@ -316,7 +317,8 @@ mod tests {
             fn $test_name() -> Result<(), Box<dyn std::error::Error>> {
                 let encoding = {
                     let mut spec = data_encoding::Specification::new();
-                    spec.symbols.push_str(ALPHABET);
+                    spec.symbols
+                        .push_str(std::str::from_utf8(ALPHABET).unwrap());
                     spec.encoding()
                 }?;
 
