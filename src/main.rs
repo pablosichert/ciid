@@ -403,6 +403,12 @@ mod tests {
     );
 
     test_encode_timestamp!(
+        test_encode_timestamp_some_date,
+        "2319-11-21 14:22:59.726 +00:00",
+        "0000000A1B2C3D4E"
+    );
+
+    test_encode_timestamp!(
         test_encode_timestamp_unix_time_plus_1_millisecond,
         "1970-1-1 00:00:00.001 +00:00",
         "0000000000000001"
