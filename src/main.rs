@@ -1,6 +1,6 @@
 mod libraw;
 
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, NaiveDateTime};
 use clap::{App, Arg};
 use image;
 use regex;
@@ -76,25 +76,90 @@ fn exiftool(args: &[&str]) -> Result<String, Box<dyn std::error::Error>> {
     Ok(stdout.to_owned())
 }
 
-/// Get the timestamp of a file based on EXIF-data.
+#[allow(non_snake_case)]
+#[derive(serde::Deserialize)]
+struct ExifDateTime {
+    SubSecDateTimeOriginal: String,
+    OffsetTimeOriginal: Option<String>,
+    TimeZone: Option<String>,
+}
+
+/// Get the date when the original media was created, based on EXIF-data.
+///
+/// Reconstructs the timezone of the original date by inspecting several other fields, if the
+/// original date does not include a timezone.
+///
+/// # Arguments
+/// * `exif` – The Exif data to be examined.
+fn get_date_original_from_exif(
+    exif: &ExifDateTime,
+) -> Result<DateTime<FixedOffset>, Box<dyn std::error::Error>> {
+    let date = DateTime::parse_from_str(&exif.SubSecDateTimeOriginal, "%Y:%m:%d %H:%M:%S%.f %:z\n");
+
+    if let Ok(date) = date {
+        return Ok(date);
+    }
+
+    let date =
+        NaiveDateTime::parse_from_str(&exif.SubSecDateTimeOriginal, "%Y:%m:%d %H:%M:%S%.f\n")
+            .map_err(|error| format!("Failed parsing exiftool timestamp: {}", error))?;
+
+    let timezone = match (&exif.OffsetTimeOriginal, &exif.TimeZone) {
+        (Some(timezone), _) => timezone,
+        (_, Some(timezone)) => timezone,
+        _ => "+00:00",
+    };
+
+    let mut parsed = chrono::format::Parsed::new();
+    chrono::format::parse(
+        &mut parsed,
+        &timezone,
+        vec![chrono::format::Item::Fixed(
+            chrono::format::Fixed::TimezoneOffset,
+        )]
+        .iter(),
+    )?;
+
+    let timezone = parsed.to_fixed_offset()?;
+
+    Ok(DateTime::<FixedOffset>::from_utc(
+        date + chrono::Duration::seconds(timezone.utc_minus_local().into()),
+        timezone,
+    ))
+}
+
+/// Get the date when the original media was created, based on EXIF-data.
 ///
 /// # Arguments
 /// * `file_path` – Path to file for which the timestamp should be read and returned.
-fn get_timestamp(
+fn get_date_original(
     file_path: &std::path::Path,
 ) -> Result<DateTime<FixedOffset>, Box<dyn std::error::Error>> {
     let path = file_path.to_str().ok_or_else(|| "Invalid file path")?;
 
     let output = exiftool(&[
-        "-p",
-        r#"${dateTimeOriginal#;DateFmt("%Y-%m-%d %H:%M:%S")}.${subSecTimeOriginal} ${dateTimeOriginal#;DateFmt("%z")}"#,
-        path
-    ]).map_err(|error| format!("Failed running exiftool: {}", error))?;
+        "-j",
+        "-SubsecDateTimeOriginal",
+        "-OffsetTimeOriginal",
+        "-TimeZone",
+        path,
+    ])
+    .map_err(|error| format!("Failed running exiftool: {}", error))?;
 
-    let timestamp = DateTime::parse_from_str(&output, "%Y-%m-%d %H:%M:%S%.f %z\n")
-        .map_err(|error| format!("Failed parsing exiftool timestamp: {}", error))?;
+    let exifs: Vec<ExifDateTime> = serde_json::from_str(&output)?;
 
-    Ok(timestamp)
+    if exifs.len() != 1 {
+        Err(format!(
+            "Expected 1 element in exiftool response, got {}. Output was:\n{}",
+            exifs.len(),
+            output
+        ))?;
+    }
+
+    let exif = &exifs[0];
+    let date = get_date_original_from_exif(&exif)?;
+
+    Ok(date)
 }
 
 fn hash_image_jpeg(
@@ -249,7 +314,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect::<Result<Vec<_>, _>>()?;
 
     for file_path in file_paths {
-        let timestamp = get_timestamp(&file_path)
+        let timestamp = get_date_original(&file_path)
             .map_err(|error| format!("Failed deriving timestamp data: {}", error))?;
 
         let hash = hash_image(&file_path)
@@ -322,7 +387,7 @@ mod tests {
                     spec.encoding()
                 }?;
 
-                let timestamp = DateTime::parse_from_str($input, "%Y-%m-%d %H:%M:%S%.f %z\n")?;
+                let timestamp = DateTime::parse_from_str($input, "%Y-%m-%d %H:%M:%S%.f %:z\n")?;
 
                 assert_eq!($expected, encode_timestamp(&encoding, &timestamp)?);
 
@@ -333,67 +398,152 @@ mod tests {
 
     test_encode_timestamp!(
         test_encode_timestamp_unix_time,
-        "1970-1-1 00:00:00.000 +0000",
+        "1970-1-1 00:00:00.000 +00:00",
         "0000000000000000"
     );
 
     test_encode_timestamp!(
         test_encode_timestamp_unix_time_plus_1_millisecond,
-        "1970-1-1 00:00:00.001 +0000",
+        "1970-1-1 00:00:00.001 +00:00",
         "0000000000000001"
     );
 
     test_encode_timestamp!(
         test_encode_timestamp_unix_time_plus_32_milliseconds,
-        "1970-1-1 00:00:00.032 +0000",
+        "1970-1-1 00:00:00.032 +00:00",
         "0000000000000010"
     );
 
     test_encode_timestamp!(
         test_encode_timestamp_unix_time_plus_1_second,
-        "1970-1-1 00:00:01.000 +0000",
+        "1970-1-1 00:00:01.000 +00:00",
         "00000000000000Z8"
     );
 
     test_encode_timestamp!(
         test_encode_timestamp_unix_time_plus_1_minute,
-        "1970-1-1 00:01:00.000 +0000",
+        "1970-1-1 00:01:00.000 +00:00",
         "0000000000001TK0"
     );
 
     test_encode_timestamp!(
         test_encode_timestamp_unix_time_plus_1_hour,
-        "1970-1-1 01:00:00.000 +0000",
+        "1970-1-1 01:00:00.000 +00:00",
         "000000000003DVM0"
     );
 
     test_encode_timestamp!(
         test_encode_timestamp_unix_time_plus_1_day,
-        "1970-1-2 00:00:00.000 +0000",
+        "1970-1-2 00:00:00.000 +00:00",
         "00000000002JCQ00"
     );
 
     test_encode_timestamp!(
         test_encode_timestamp_unix_time_plus_1_month,
-        "1970-2-1 00:00:00.000 +0000",
+        "1970-2-1 00:00:00.000 +00:00",
         "0000000002FTA900"
     );
 
     test_encode_timestamp!(
         test_encode_timestamp_unix_time_plus_1_year,
-        "1971-1-1 00:00:00.000 +0000",
+        "1971-1-1 00:00:00.000 +00:00",
         "000000000XBV2B00"
     );
 
     test_encode_timestamp!(
         test_encode_timestamp_unix_time_tz_minus_1,
-        "1969-12-31 23:00:00.000 -0100",
+        "1969-12-31 23:00:00.000 -01:00",
         "0000000000000000"
     );
 
     test_encode_timestamp!(
         test_encode_timestamp_unix_time_tz_plus_1,
-        "1970-1-1 01:00:00.000 +0100",
+        "1970-1-1 01:00:00.000 +01:00",
         "0000000000000000"
+    );
+
+    macro_rules! test_get_date_original_from_exif {
+        ($test_name:ident, $input:literal, $expected:literal) => {
+            #[test]
+            fn $test_name() -> Result<(), Box<dyn std::error::Error>> {
+                let exif: ExifDateTime = serde_json::from_str($input)?;
+                let date = get_date_original_from_exif(&exif)?;
+                let expected = DateTime::parse_from_str($expected, "%Y:%m:%d %H:%M:%S%.f %:z\n")?;
+
+                assert_eq!(date, expected);
+
+                Ok(())
+            }
+        };
+    }
+
+    test_get_date_original_from_exif!(
+        test_get_date_original_from_exif_date_without_timezone,
+        r#"{
+            "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67"
+        }"#,
+        "2345:01:23 01:23:45.67+00:00"
+    );
+
+    test_get_date_original_from_exif!(
+        test_get_date_original_from_exif_date_with_timezone_positive,
+        r#"{
+            "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67+01:00"
+        }"#,
+        "2345:01:23 01:23:45.67+01:00"
+    );
+
+    test_get_date_original_from_exif!(
+        test_get_date_original_from_exif_date_with_timezone_negative,
+        r#"{
+            "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67-01:00"
+        }"#,
+        "2345:01:23 01:23:45.67-01:00"
+    );
+
+    test_get_date_original_from_exif!(
+        test_get_date_original_from_exif_date_with_timezone_ignores_other,
+        r#"{
+            "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67+01:00",
+            "OffsetTimeOriginal": "+02:00",
+            "TimeZone": "+03:00"
+        }"#,
+        "2345:01:23 01:23:45.67+01:00"
+    );
+
+    test_get_date_original_from_exif!(
+        test_get_date_original_from_exif_date_with_timezone_positive_from_offset_time_original,
+        r#"{
+            "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67",
+            "OffsetTimeOriginal": "+01:00"
+        }"#,
+        "2345:01:23 01:23:45.67+01:00"
+    );
+
+    test_get_date_original_from_exif!(
+        test_get_date_original_from_exif_date_with_timezone_negataive_from_offset_time_original,
+        r#"{
+            "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67",
+            "OffsetTimeOriginal": "-01:00"
+        }"#,
+        "2345:01:23 01:23:45.67-01:00"
+    );
+
+    test_get_date_original_from_exif!(
+        test_get_date_original_from_exif_date_with_timezone_positive_from_offset_time_zone,
+        r#"{
+            "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67",
+            "TimeZone": "+01:00"
+        }"#,
+        "2345:01:23 01:23:45.67+01:00"
+    );
+
+    test_get_date_original_from_exif!(
+        test_get_date_original_from_exif_date_with_timezone_negative_from_offset_time_zone,
+        r#"{
+            "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67",
+            "TimeZone": "-01:00"
+        }"#,
+        "2345:01:23 01:23:45.67-01:00"
     );
 }
