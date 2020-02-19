@@ -36,7 +36,7 @@ Here's how a resulting identifier looks like:
 ```
 
 The first part of the identifier encodes the creation date of the image (a
-50-bit timestamp with millisecond-precision), while the second part is a hash
+50-bit timestamp with millisecond precision), while the second part is a hash
 (SHA-256) based on the contents of the image buffer.
 
 The encoding uses
