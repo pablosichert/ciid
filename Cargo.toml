@@ -23,7 +23,7 @@ will yield the same identifier most of the time.
 Here's how a resulting identifier looks like:
 
 ```
-0A1B2C3D4E-5F6G7H8J9K0M1N2P3Q4R5S6T7V8W9X0Y1Z2A3B4C5D6E7F8G9H0J
+0A1B2C3D4E-5F6G7H8J9K0M1N2P3Q4R5S6T7V8W9X0Y1Z2A3B4C5D6E7F8G9H00
 └───┬────┘ └────────────────────────┬─────────────────────────┘
  timestamp                hash of image buffer
 ```
