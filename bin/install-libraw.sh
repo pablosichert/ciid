@@ -8,5 +8,6 @@ pushd $temp
 ./mkdist.sh
 ./configure
 make install
+ldconfig
 popd
 rm -rf $temp
