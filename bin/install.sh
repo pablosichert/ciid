@@ -1,7 +1,9 @@
 #!/bin/bash
 function install_package_manager_dependencies() {
     case "$OSTYPE" in
-    darwin*) ;;
+    darwin*)
+        brew install autoconf automake libtool pkg-config
+        ;;
     linux*)
         sudo apt-get update
         sudo apt-get install -y \
@@ -63,7 +65,12 @@ function install_libraw() {
     ./mkdist.sh
     ./configure
     sudo make install
-    sudo ldconfig
+
+    case "$OSTYPE" in
+    linux*)
+        sudo ldconfig
+        ;;
+    esac
 
     popd
 }
@@ -94,13 +101,6 @@ if (return 0 2>/dev/null); then
 fi
 
 set -euo pipefail
-
-# Run commands without sudo if sudo is not available
-if command -v sudo >/dev/null; then
-    function sudo() {
-        "$@"
-    }
-fi
 
 echo "Requesting sudo privileges for installation"
 sudo true
