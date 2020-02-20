@@ -24,7 +24,7 @@ function install_exiftool() {
     fi
 
     temp=$(mktemp -d)
-    trap rm -rf $temp RETURN
+    trap "rm -rf $temp" RETURN
 
     git clone https://github.com/exiftool/exiftool $temp
 
@@ -54,7 +54,7 @@ function install_libraw() {
     esac
 
     temp=$(mktemp -d)
-    trap rm -rf $temp RETURN
+    trap "sudo rm -rf $temp" RETURN
 
     git clone https://github.com/LibRaw/LibRaw $temp
 
