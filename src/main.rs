@@ -86,8 +86,8 @@ struct ExifDateTime {
 
 /// Get the date when the original media was created, based on EXIF-data.
 ///
-/// Reconstructs the timezone of the original date by inspecting several other fields, if the
-/// original date does not include a timezone.
+/// Reconstructs the time zone of the original date by inspecting several other fields, if the
+/// original date does not include a time zone.
 ///
 /// # Arguments
 /// * `exif` – The Exif data to be examined.
@@ -104,27 +104,27 @@ fn get_date_original_from_exif(
         NaiveDateTime::parse_from_str(&exif.SubSecDateTimeOriginal, "%Y:%m:%d %H:%M:%S%.f\n")
             .map_err(|error| format!("Failed parsing exiftool timestamp: {}", error))?;
 
-    let timezone = match (&exif.OffsetTimeOriginal, &exif.TimeZone) {
-        (Some(timezone), _) => timezone,
-        (_, Some(timezone)) => timezone,
+    let time_zone = match (&exif.OffsetTimeOriginal, &exif.TimeZone) {
+        (Some(time_zone), _) => time_zone,
+        (_, Some(time_zone)) => time_zone,
         _ => "+00:00",
     };
 
     let mut parsed = chrono::format::Parsed::new();
     chrono::format::parse(
         &mut parsed,
-        &timezone,
+        &time_zone,
         vec![chrono::format::Item::Fixed(
             chrono::format::Fixed::TimezoneOffset,
         )]
         .iter(),
     )?;
 
-    let timezone = parsed.to_fixed_offset()?;
+    let time_zone = parsed.to_fixed_offset()?;
 
     Ok(DateTime::<FixedOffset>::from_utc(
-        date + chrono::Duration::seconds(timezone.utc_minus_local().into()),
-        timezone,
+        date + chrono::Duration::seconds(time_zone.utc_minus_local().into()),
+        time_zone,
     ))
 }
 
@@ -484,7 +484,7 @@ mod tests {
     }
 
     test_get_date_original_from_exif!(
-        test_get_date_original_from_exif_date_without_timezone,
+        test_get_date_original_from_exif_date_without_time_zone,
         r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67"
         }"#,
@@ -492,7 +492,7 @@ mod tests {
     );
 
     test_get_date_original_from_exif!(
-        test_get_date_original_from_exif_date_with_timezone_positive,
+        test_get_date_original_from_exif_date_with_time_zone_positive,
         r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67+01:00"
         }"#,
@@ -500,7 +500,7 @@ mod tests {
     );
 
     test_get_date_original_from_exif!(
-        test_get_date_original_from_exif_date_with_timezone_negative,
+        test_get_date_original_from_exif_date_with_time_zone_negative,
         r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67-01:00"
         }"#,
@@ -508,7 +508,7 @@ mod tests {
     );
 
     test_get_date_original_from_exif!(
-        test_get_date_original_from_exif_date_with_timezone_ignores_other,
+        test_get_date_original_from_exif_date_with_time_zone_ignores_other,
         r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67+01:00",
             "OffsetTimeOriginal": "+02:00",
@@ -518,7 +518,7 @@ mod tests {
     );
 
     test_get_date_original_from_exif!(
-        test_get_date_original_from_exif_date_with_timezone_positive_from_offset_time_original,
+        test_get_date_original_from_exif_date_with_time_zone_positive_from_offset_time_original,
         r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67",
             "OffsetTimeOriginal": "+01:00"
@@ -527,7 +527,7 @@ mod tests {
     );
 
     test_get_date_original_from_exif!(
-        test_get_date_original_from_exif_date_with_timezone_negataive_from_offset_time_original,
+        test_get_date_original_from_exif_date_with_time_zone_negataive_from_offset_time_original,
         r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67",
             "OffsetTimeOriginal": "-01:00"
@@ -536,7 +536,7 @@ mod tests {
     );
 
     test_get_date_original_from_exif!(
-        test_get_date_original_from_exif_date_with_timezone_positive_from_offset_time_zone,
+        test_get_date_original_from_exif_date_with_time_zone_positive_from_offset_time_zone,
         r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67",
             "TimeZone": "+01:00"
@@ -545,7 +545,7 @@ mod tests {
     );
 
     test_get_date_original_from_exif!(
-        test_get_date_original_from_exif_date_with_timezone_negative_from_offset_time_zone,
+        test_get_date_original_from_exif_date_with_time_zone_negative_from_offset_time_zone,
         r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67",
             "TimeZone": "-01:00"

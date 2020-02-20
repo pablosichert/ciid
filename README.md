@@ -109,10 +109,10 @@ $ ciid [FLAGS] <file path>...
 Why do we encode the timestamp as `0A1B2C3D4E` instead of e.g.
 `2319-11-21 14:22:59.726`? The timestamp represents an
 unambiguous<a href="#footnote-leap-seconds"><sup>1</sup></a> single point in
-time, whereas the date string needs to be contextualized with a timezone. That
+time, whereas the date string needs to be contextualized with a time zone. That
 means that you would either need to annotate the date string with a time zone or
 change the file name every time you are on a system which uses a different
-timezone.
+time zone.
 
 Apart from that, the former encoding is significantly more compact.
 
