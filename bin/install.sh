@@ -73,6 +73,17 @@ function install_rust_toolchain() {
 }
 
 function install_ciid() {
+    # Check if ciid is already installed
+    if command -v ciid >/dev/null; then
+        return
+    fi
+
+    echo "Trying to install ciid from local directory"
+    if cargo install --bin ciid --path .; then
+        return
+    fi
+
+    echo "Installing ciid from cargo"
     cargo install ciid
 }
 
