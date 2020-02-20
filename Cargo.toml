@@ -51,9 +51,27 @@ documentation = "https://github.com/pablosichert/ciid"
 homepage = "https://github.com/pablosichert/ciid"
 repository = "https://github.com/pablosichert/ciid"
 readme = "README.md"
-keywords = ["chronological", "sortable", "unique", "image", "identifier"]
-categories = ["command-line-utilities", "filesystem", "multimedia", "multimedia::encoding", "multimedia::images"]
+keywords = [
+  "chronological",
+  "identifier",
+  "image",
+  "sortable",
+  "unique"
+]
+categories = [
+  "command-line-utilities",
+  "filesystem",
+  "multimedia::encoding",
+  "multimedia::images",
+  "multimedia"
+]
 license = "MIT"
+include = [
+  "build.rs",
+  "LICENSE",
+  "README.md",
+  "src"
+]
 edition = "2018"
 
 [dependencies]
