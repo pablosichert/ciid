@@ -9,8 +9,12 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1.0.5
       - name: Install ExifTool
-        run: sudo ./bin/install-exiftool.sh
+        run: |
+          source ./bin/install.sh
+          install_exiftool
       - name: Install LibRaw
-        run: sudo ./bin/install-libraw.sh
+        run: |
+          source ./bin/install.sh
+          install_libraw
       - name: Cargo test
         run: cargo test

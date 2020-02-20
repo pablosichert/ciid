@@ -63,7 +63,15 @@ Following criteria were considered when choosing the character set:
   insensitive file systems
 - be safe to use in URLs
 
-## Installation
+## Installation (via script)
+
+Download and run the installation script:
+
+```bash
+$ curl -s https://raw.githubusercontent.com/pablosichert/ciid/master/bin/install.sh | sh
+```
+
+## Installation (manually)
 
 ### Prerequisites
 
@@ -72,7 +80,7 @@ Following criteria were considered when choosing the character set:
 - [LibRaw](https://github.com/LibRaw/LibRaw)
 
 For help with installing the dependencies, have a look at the
-[Dockerfile](https://github.com/pablosichert/ciid/blob/master/Dockerfile).
+[install script](https://github.com/pablosichert/ciid/blob/master/bin/install.sh).
 
 Install the `ciid` binary onto your system via
 [`cargo`](https://doc.rust-lang.org/cargo/commands/cargo-install.html):
