@@ -77,6 +77,8 @@ function install_libraw() {
 
 function install_rust_toolchain() {
     curl -s https://sh.rustup.rs | sh -s -- -y
+
+    source $HOME/.cargo/env
 }
 
 function install_ciid() {
