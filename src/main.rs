@@ -536,7 +536,7 @@ mod tests {
     );
 
     test_get_date_original_from_exif!(
-        test_get_date_original_from_exif_date_with_time_zone_positive_from_offset_time_zone,
+        test_get_date_original_from_exif_date_with_time_zone_positive_from_time_zone,
         r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67",
             "TimeZone": "+01:00"
@@ -545,7 +545,7 @@ mod tests {
     );
 
     test_get_date_original_from_exif!(
-        test_get_date_original_from_exif_date_with_time_zone_negative_from_offset_time_zone,
+        test_get_date_original_from_exif_date_with_time_zone_negative_from_time_zone,
         r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67",
             "TimeZone": "-01:00"
