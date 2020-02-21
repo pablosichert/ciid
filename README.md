@@ -68,7 +68,7 @@ Following criteria were considered when choosing the character set:
 Download and run the installation script:
 
 ```bash
-$ curl -s https://raw.githubusercontent.com/pablosichert/ciid/master/bin/install.sh | sh
+$ curl -s https://raw.githubusercontent.com/pablosichert/ciid/master/bin/install.sh | bash
 ```
 
 ## Installation (manually)
