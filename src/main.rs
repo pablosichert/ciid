@@ -3,7 +3,7 @@ mod libraw;
 use chrono::{DateTime, FixedOffset, NaiveDateTime};
 use clap::{App, Arg};
 use image;
-use regex;
+use regex::Regex;
 use sha2::Digest;
 use std::convert::TryInto;
 
@@ -135,7 +135,10 @@ fn get_date_original_from_exif(
 fn get_date_original(
     file_path: &std::path::Path,
 ) -> Result<DateTime<FixedOffset>, Box<dyn std::error::Error>> {
-    let path = file_path.to_str().ok_or_else(|| "Invalid file path")?;
+    let path = match file_path.to_str() {
+        None => Err(format!("Invalid file path: {:?}", file_path)),
+        Some(file_path) => Ok(file_path),
+    }?;
 
     let output = exiftool(&[
         "-j",
@@ -254,7 +257,7 @@ fn hash_image(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std::erro
         .and_then(|extension| extension.to_str());
 
     match extension {
-        Some(extension) if regex::Regex::new("(?i)jpe?g")?.is_match(extension) => {
+        Some(extension) if Regex::new("(?i)jpe?g")?.is_match(extension) => {
             hash_image_jpeg(file_path, &mut hasher)
         }
         _ => hash_image_raw(file_path, &mut hasher),
@@ -288,6 +291,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .required(true)
                 .multiple(true)
                 .help("Path to image file"),
+        )
+        .arg(
+            Arg::with_name("template")
+                .takes_value(true)
+                .long("--print")
+                .help("Prints provided template to stdout, substituting variables with file information. Available variables: ${file_path}, ${identifier}, ${date_time}, ${timestamp}"),
         )
         .arg(
             Arg::with_name("verify name")
@@ -366,7 +375,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::fs::rename(file_path.clone(), hash_file_path)?;
         }
 
-        println!("{}", identifier);
+        let mut template = matches
+            .value_of("template")
+            .unwrap_or("${identifier}\n")
+            .to_owned();
+
+        let regex_file_path = Regex::new(r"\$\{file_path\}").unwrap();
+        template = regex_file_path
+            .replace_all(
+                &template,
+                regex::NoExpand(match file_path.to_str() {
+                    None => Err(format!("Invalid file path: {:?}", file_path)),
+                    Some(file_path) => Ok(file_path),
+                }?),
+            )
+            .into();
+
+        let regex_identifier = Regex::new(r"\$\{identifier\}").unwrap();
+        template = regex_identifier
+            .replace_all(&template, regex::NoExpand(&identifier))
+            .into();
+
+        let regex_date_time = Regex::new(r"\$\{date_time\}").unwrap();
+        template = regex_date_time
+            .replace_all(
+                &template,
+                regex::NoExpand(&timestamp.to_rfc3339_opts(chrono::SecondsFormat::Millis, false)),
+            )
+            .into();
+
+        let regex_timestamp = Regex::new(r"\$\{timestamp\}").unwrap();
+        template = regex_timestamp
+            .replace_all(
+                &template,
+                regex::NoExpand(&timestamp.timestamp_millis().to_string()),
+            )
+            .into();
+
+        print!("{}", template);
     }
 
     Ok(())

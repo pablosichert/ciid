@@ -104,6 +104,12 @@ $ ciid [FLAGS] <file path>...
 | -V    | --version     | Prints version information                                               |
 |       | --verify-name | Verifies if the provided file name is equal to the derived identifier    |
 
+## Options
+
+| Short | Long                 | Description                                                                                                                                                    |
+| ----- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|       | --print \<template\> | Prints provided template to stdout, substituting variables with file information. Available variables: ${file_path}, ${identifier}, ${date_time}, ${timestamp} |
+
 ## Arguments
 
 | Name             | Description        |
