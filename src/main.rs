@@ -510,11 +510,31 @@ mod tests {
     test_get_date_original_from_exif!(
         test_get_date_original_from_exif_date_with_time_zone_ignores_other,
         r#"{
+            "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67+00:00",
+            "OffsetTimeOriginal": "+02:00",
+            "TimeZone": "+03:00"
+        }"#,
+        "2345:01:23 01:23:45.67+00:00"
+    );
+
+    test_get_date_original_from_exif!(
+        test_get_date_original_from_exif_date_with_time_zone_positive_ignores_other,
+        r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67+01:00",
             "OffsetTimeOriginal": "+02:00",
             "TimeZone": "+03:00"
         }"#,
         "2345:01:23 01:23:45.67+01:00"
+    );
+
+    test_get_date_original_from_exif!(
+        test_get_date_original_from_exif_date_with_time_zone_negative_ignores_other,
+        r#"{
+            "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67-01:00",
+            "OffsetTimeOriginal": "+02:00",
+            "TimeZone": "+03:00"
+        }"#,
+        "2345:01:23 01:23:45.67-01:00"
     );
 
     test_get_date_original_from_exif!(
@@ -527,7 +547,7 @@ mod tests {
     );
 
     test_get_date_original_from_exif!(
-        test_get_date_original_from_exif_date_with_time_zone_negataive_from_offset_time_original,
+        test_get_date_original_from_exif_date_with_time_zone_negative_from_offset_time_original,
         r#"{
             "SubSecDateTimeOriginal": "2345:01:23 01:23:45.67",
             "OffsetTimeOriginal": "-01:00"
