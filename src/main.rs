@@ -7,41 +7,31 @@ use regex::Regex;
 use sha2::Digest;
 use std::convert::TryInto;
 
-/// Based on Douglas Crockford's base32 alphabet: https://www.crockford.com/base32.html.
-const ALPHABET: &'static [u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-/// Encodes a timestamp to a string.
-///
-/// The byte representation of the timestamp is padded with zeros on the left if the amount of bits
-/// needed to represent it can not exactly be encoded with the given encoding.
+/// Return an identifier based on the provided timestamp and hash.
 ///
 /// # Arguments
-/// * `encoding` – Encoding used to encode the timestamp.
-/// * `timestamp` – The timestamp to be encoded.
-fn encode_timestamp(
-    encoding: &data_encoding::Encoding,
+/// * `timestamp` – Timestamp used in the identifier.
+/// * `timestamp_digits` – Minimum number of digits the timestamp should carry. Will be padded with
+/// zeros from the left.
+/// * `hash` – Hash used in the identifier.
+fn get_identifier(
     timestamp: &DateTime<FixedOffset>,
+    timestamp_digits: u64,
+    hash: &[u8],
 ) -> Result<String, Box<dyn std::error::Error>> {
     let millis: u64 = timestamp
         .timestamp_millis()
         .try_into()
         .map_err(|_| "Timestamps before 1970-01-01T00:00:00Z are not supported")?;
 
-    let bytes = millis.to_be_bytes().to_vec();
+    let identifier = format!(
+        "{timestamp:0digits$}-{hash}",
+        timestamp = millis,
+        digits = timestamp_digits as usize,
+        hash = data_encoding::HEXLOWER.encode(&hash)
+    );
 
-    // Pad bytes width zeros on the left
-    let bytes = {
-        let chunk_size = encoding.bit_width();
-        let num_bytes = bytes.len();
-        let num_chunks = num_bytes / chunk_size + (if num_bytes % chunk_size == 0 { 0 } else { 1 });
-        let num_padded = (num_chunks * chunk_size) - num_bytes;
-
-        let mut padded = vec![0; num_padded];
-        padded.extend(bytes);
-        padded
-    };
-
-    Ok(encoding.encode(&bytes))
+    Ok(identifier)
 }
 
 /// Calls the `exiftool` command line tool and returns the contents of stdout.
@@ -293,12 +283,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("Path to image file"),
         )
         .arg(
-            Arg::with_name("template")
-                .takes_value(true)
-                .long("--print")
-                .help("Prints provided template to stdout, substituting variables with file information. Available variables: ${file_path}, ${identifier}, ${date_time}, ${timestamp}"),
-        )
-        .arg(
             Arg::with_name("verify name")
                 .long("--verify-name")
                 .help("Verifies if the provided file name is equal to the derived identifier"),
@@ -307,6 +291,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arg::with_name("rename file")
                 .long("--rename-file")
                 .help("Renames the file to the derived identifier. Preserves the file extension"),
+        )
+        .arg(
+            Arg::with_name("template")
+                .takes_value(true)
+                .long("--print")
+                .help("Prints provided template to stdout, substituting variables with file information. Available variables: ${file_path}, ${identifier}, ${date_time}, ${timestamp}"),
+        )
+        .arg(
+            Arg::with_name("timestamp digits")
+                .takes_value(true)
+                .long("--timestamp-digits")
+                .help("Minimum number of digits the timestamp should carry. Will be padded with zeros from the left"),
         )
         .get_matches();
 
@@ -322,6 +318,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    let timestamp_digits = matches
+        .value_of("timestamp digits")
+        .unwrap_or("14")
+        .parse::<u64>()
+        .map_err(|error| format!("Failed parsing timestamp digits: {}", error))?;
+
     for file_path in file_paths {
         let timestamp = get_date_original(&file_path)
             .map_err(|error| format!("Failed deriving timestamp data: {}", error))?;
@@ -329,20 +331,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let hash = hash_image(&file_path)
             .map_err(|error| format!("Failed deriving image hash: {}", error))?;
 
-        let encoding = {
-            let mut spec = data_encoding::Specification::new();
-            spec.symbols
-                .push_str(std::str::from_utf8(ALPHABET).unwrap());
-            spec.encoding()
-        }?;
-
-        let timestamp_encoded = encode_timestamp(&encoding, &timestamp)?;
-
-        let identifier = format!(
-            "{}-{}",
-            &timestamp_encoded[timestamp_encoded.len() - 10..],
-            encoding.encode(&hash),
-        );
+        let identifier = get_identifier(&timestamp, timestamp_digits, &hash)?;
 
         let verify_name = matches.is_present("verify name");
         let rename_file = matches.is_present("rename file");
@@ -422,96 +411,132 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::*;
 
-    macro_rules! test_encode_timestamp {
-        ($test_name:ident, $input:literal, $expected:literal) => {
+    macro_rules! test_get_identifier {
+        ($test_name:ident, $date:literal, $timestamp_digits:literal, $hash:expr, $expected:literal) => {
             #[test]
             fn $test_name() -> Result<(), Box<dyn std::error::Error>> {
-                let encoding = {
-                    let mut spec = data_encoding::Specification::new();
-                    spec.symbols
-                        .push_str(std::str::from_utf8(ALPHABET).unwrap());
-                    spec.encoding()
-                }?;
+                let timestamp = DateTime::parse_from_str($date, "%Y-%m-%d %H:%M:%S%.f %:z\n")?;
 
-                let timestamp = DateTime::parse_from_str($input, "%Y-%m-%d %H:%M:%S%.f %:z\n")?;
-
-                assert_eq!($expected, encode_timestamp(&encoding, &timestamp)?);
+                assert_eq!(
+                    $expected,
+                    get_identifier(&timestamp, $timestamp_digits, $hash)?
+                );
 
                 Ok(())
             }
         };
     }
 
-    test_encode_timestamp!(
-        test_encode_timestamp_unix_time,
+    test_get_identifier!(
+        test_get_identifier_unix_time,
         "1970-1-1 00:00:00.000 +00:00",
-        "0000000000000000"
+        0,
+        &[1, 2, 3, 4],
+        "0-01020304"
     );
 
-    test_encode_timestamp!(
-        test_encode_timestamp_some_date,
-        "2319-11-21 14:22:59.726 +00:00",
-        "0000000A1B2C3D4E"
+    test_get_identifier!(
+        test_get_identifier_some_date,
+        "2009-02-13 23:31:30.123 +00:00",
+        0,
+        &[1, 2, 3, 4],
+        "1234567890123-01020304"
     );
 
-    test_encode_timestamp!(
-        test_encode_timestamp_unix_time_plus_1_millisecond,
+    test_get_identifier!(
+        test_get_identifier_unix_time_plus_1_millisecond,
         "1970-1-1 00:00:00.001 +00:00",
-        "0000000000000001"
+        0,
+        &[1, 2, 3, 4],
+        "1-01020304"
     );
 
-    test_encode_timestamp!(
-        test_encode_timestamp_unix_time_plus_32_milliseconds,
-        "1970-1-1 00:00:00.032 +00:00",
-        "0000000000000010"
+    test_get_identifier!(
+        test_get_identifier_unix_time_plus_10_milliseconds,
+        "1970-1-1 00:00:00.010 +00:00",
+        0,
+        &[1, 2, 3, 4],
+        "10-01020304"
     );
 
-    test_encode_timestamp!(
-        test_encode_timestamp_unix_time_plus_1_second,
+    test_get_identifier!(
+        test_get_identifier_unix_time_plus_1_second,
         "1970-1-1 00:00:01.000 +00:00",
-        "00000000000000Z8"
+        0,
+        &[1, 2, 3, 4],
+        "1000-01020304"
     );
 
-    test_encode_timestamp!(
-        test_encode_timestamp_unix_time_plus_1_minute,
+    test_get_identifier!(
+        test_get_identifier_unix_time_plus_1_minute,
         "1970-1-1 00:01:00.000 +00:00",
-        "0000000000001TK0"
+        0,
+        &[1, 2, 3, 4],
+        "60000-01020304"
     );
 
-    test_encode_timestamp!(
-        test_encode_timestamp_unix_time_plus_1_hour,
+    test_get_identifier!(
+        test_get_identifier_unix_time_plus_1_hour,
         "1970-1-1 01:00:00.000 +00:00",
-        "000000000003DVM0"
+        0,
+        &[1, 2, 3, 4],
+        "3600000-01020304"
     );
 
-    test_encode_timestamp!(
-        test_encode_timestamp_unix_time_plus_1_day,
+    test_get_identifier!(
+        test_get_identifier_unix_time_plus_1_day,
         "1970-1-2 00:00:00.000 +00:00",
-        "00000000002JCQ00"
+        0,
+        &[1, 2, 3, 4],
+        "86400000-01020304"
     );
 
-    test_encode_timestamp!(
-        test_encode_timestamp_unix_time_plus_1_month,
+    test_get_identifier!(
+        test_get_identifier_unix_time_plus_1_month,
         "1970-2-1 00:00:00.000 +00:00",
-        "0000000002FTA900"
+        0,
+        &[1, 2, 3, 4],
+        "2678400000-01020304"
     );
 
-    test_encode_timestamp!(
-        test_encode_timestamp_unix_time_plus_1_year,
+    test_get_identifier!(
+        test_get_identifier_unix_time_plus_1_year,
         "1971-1-1 00:00:00.000 +00:00",
-        "000000000XBV2B00"
+        0,
+        &[1, 2, 3, 4],
+        "31536000000-01020304"
     );
 
-    test_encode_timestamp!(
-        test_encode_timestamp_unix_time_tz_minus_1,
+    test_get_identifier!(
+        test_get_identifier_unix_time_tz_minus_1,
         "1969-12-31 23:00:00.000 -01:00",
-        "0000000000000000"
+        0,
+        &[1, 2, 3, 4],
+        "0-01020304"
     );
 
-    test_encode_timestamp!(
-        test_encode_timestamp_unix_time_tz_plus_1,
+    test_get_identifier!(
+        test_get_identifier_unix_time_tz_plus_1,
         "1970-1-1 01:00:00.000 +01:00",
-        "0000000000000000"
+        0,
+        &[1, 2, 3, 4],
+        "0-01020304"
+    );
+
+    test_get_identifier!(
+        test_get_identifier_pad_less,
+        "1970-1-1 00:00:01.000 +00:00",
+        0,
+        &[1, 2, 3, 4],
+        "1000-01020304"
+    );
+
+    test_get_identifier!(
+        test_get_identifier_pad_more,
+        "1970-1-1 00:00:00.001 +00:00",
+        10,
+        &[1, 2, 3, 4],
+        "0000000001-01020304"
     );
 
     macro_rules! test_get_date_original_from_exif {

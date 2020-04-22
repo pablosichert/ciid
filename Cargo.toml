@@ -23,29 +23,20 @@ will yield the same identifier most of the time.
 Here's how a resulting identifier looks like:
 
 ```
-0A1B2C3D4E-5F6G7H8J9K0M1N2P3Q4R5S6T7V8W9X0Y1Z2A3B4C5D6E7F8G9H00
-└───┬────┘ └────────────────────────┬─────────────────────────┘
- timestamp                hash of image buffer
+01234567890123-a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1
+└─────┬──────┘ └──────────────────────────────┬───────────────────────────────┘
+  timestamp                         hash of image buffer
 ```
 
-The first part of the identifier encodes the creation date of the image (a
-50-bit timestamp with millisecond-precision), while the second part is a hash
-(SHA-256) based on the contents of the image buffer.
+The first part of the identifier encodes the creation date of the image (a unix
+timestamp with millisecond precision), while the second part is a hash (SHA-256)
+based on the contents of the image buffer.
 
-The encoding uses
-[Douglas Crackford's base32](https://www.crockford.com/base32.html) alphabet
-with the following characters:
+Following criteria were considered when choosing the identifier:
 
-`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `A`, `B`, `C`, `D`, `E`, `F`,
-`G`, `H`, `J`, `K`, `M`, `N`, `P`, `Q`, `R`, `S`, `T`, `V`, `W`, `X`, `Y`, `Z`.
-
-Following criteria were considered when choosing the character set:
-
-- encode information sufficiently compact (in this case 5 bits per character)
 - have sensible alphabetical ordering on file systems (timestamps with a higher
   value should appear strictly after lower ones)
-- no distinction between upper- und lowercase, avoiding issues on case
-  insensitive file systems
+- encode information sufficiently compact
 - be safe to use in URLs"""
 documentation = "https://github.com/pablosichert/ciid"
 homepage = "https://github.com/pablosichert/ciid"

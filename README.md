@@ -38,29 +38,20 @@ will yield the same identifier most of the time.
 Here's how a resulting identifier looks like:
 
 ```
-0A1B2C3D4E-5F6G7H8J9K0M1N2P3Q4R5S6T7V8W9X0Y1Z2A3B4C5D6E7F8G9H00
-└───┬────┘ └────────────────────────┬─────────────────────────┘
- timestamp                hash of image buffer
+01234567890123-a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1
+└─────┬──────┘ └──────────────────────────────┬───────────────────────────────┘
+  timestamp                         hash of image buffer
 ```
 
-The first part of the identifier encodes the creation date of the image (a
-50-bit timestamp with millisecond precision), while the second part is a hash
-(SHA-256) based on the contents of the image buffer.
+The first part of the identifier encodes the creation date of the image (a unix
+timestamp with millisecond precision), while the second part is a hash (SHA-256)
+based on the contents of the image buffer.
 
-The encoding uses
-[Douglas Crackford's base32](https://www.crockford.com/base32.html) alphabet
-with the following characters:
+Following criteria were considered when choosing the identifier:
 
-`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `A`, `B`, `C`, `D`, `E`, `F`,
-`G`, `H`, `J`, `K`, `M`, `N`, `P`, `Q`, `R`, `S`, `T`, `V`, `W`, `X`, `Y`, `Z`.
-
-Following criteria were considered when choosing the character set:
-
-- encode information sufficiently compact (in this case 5 bits per character)
 - have sensible alphabetical ordering on file systems (timestamps with a higher
   value should appear strictly after lower ones)
-- no distinction between upper- und lowercase, avoiding issues on case
-  insensitive file systems
+- encode information sufficiently compact
 - be safe to use in URLs
 
 ## Installation (via script)
@@ -106,9 +97,10 @@ $ ciid [FLAGS] <file path>...
 
 ## Options
 
-| Short | Long                 | Description                                                                                                                                                    |
-| ----- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|       | --print \<template\> | Prints provided template to stdout, substituting variables with file information. Available variables: ${file_path}, ${identifier}, ${date_time}, ${timestamp} |
+| Short | Long                                    | Description                                                                                                                                                    |
+| ----- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|       | --print \<template\>                    | Prints provided template to stdout, substituting variables with file information. Available variables: ${file_path}, ${identifier}, ${date_time}, ${timestamp} |
+|       | --timestamp-digits \<timestamp digits\> | Minimum number of digits the timestamp should carry. Will be padded with zeros from the left                                                                   |
 
 ## Arguments
 
@@ -120,24 +112,44 @@ $ ciid [FLAGS] <file path>...
 
 #### Why not use a more human-readable format for the timestamp?
 
-Why do we encode the timestamp as `0A1B2C3D4E` instead of e.g.
-`2319-11-21 14:22:59.726`? The timestamp represents an
+Why do we encode the timestamp as `01234567890123` instead of e.g.
+`2009-02-13 23:31:30.123`? The timestamp represents an
 unambiguous<a href="#footnote-leap-seconds"><sup>1</sup></a> single point in
 time, whereas the date string needs to be contextualized with a time zone. That
 means that you would either need to annotate the date string with a time zone or
-change the file name every time you are on a system which uses a different
-time zone.
+change the file name every time you are on a system which uses a different time
+zone.
 
-Apart from that, the former encoding is significantly more compact.
+Apart from that, the former encoding is more compact.
 
-While unfortunately it's not easy to derive the actual date from the encoded
-timestamp just by looking at it, you can compare two encoded timestamps
-chronologically by sorting them alphabetically.
+While unfortunately it's not easy to derive the actual date from the timestamp
+just by looking at it, you can compare two timestamps chronologically by sorting
+them by value.
 
 <sup id="footnote-leap-seconds">1</sup> ignoring
 [leap-seconds](https://en.wikipedia.org/wiki/Leap_second).
 
-## Prior Art
+## Changelog
 
-The timestamp used in `ciid` was inspired by
-[ulid](https://github.com/ulid/spec).
+The changelog format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
+adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+### [0.2.0]
+
+#### Changed
+
+- The timestamp used in the identifier is no longer a byte sequence encoded
+  using base32. Instead, it uses the plain decimal representation of a unix
+  timestamp with millisecond precision. The reason for this change is that the
+  file system UI (at least on macOS) does not sort file names strictly
+  chronologically. E.g. files with names `01`, `0a`, `10`, `a0` should preserve
+  the order, but get presented in order `0a`, `01`, `10`, `a0`.
+- The hash used in the identifier is now encoded using lowercase hex instead of
+  base32, in accordance with how common tools encode SHA-256 hashes.
+
+#### Added
+
+- The new CLI option `--timestamp-digits` can be used to control how many digits
+  the timestamp should carry at a minimum. Missing zeros will be padded from the
+  left.
