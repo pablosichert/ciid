@@ -112,7 +112,7 @@ fn get_date_original_from_exif(
 
     let time_zone = parsed.to_fixed_offset()?;
 
-    Ok(DateTime::<FixedOffset>::from_utc(
+    Ok(DateTime::<FixedOffset>::from_naive_utc_and_offset(
         date + chrono::Duration::seconds(time_zone.utc_minus_local().into()),
         time_zone,
     ))
@@ -266,7 +266,7 @@ fn hash_image(file_path: &std::path::Path) -> Result<[u8; 32], Box<dyn std::erro
     let sha256 = hasher.result();
 
     let mut hash: [u8; 32] = Default::default();
-    hash.copy_from_slice(&sha256);
+    hash.copy_from_slice(sha256.as_slice());
 
     Ok(hash)
 }
@@ -331,7 +331,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let hash = hash_image(&file_path)
             .map_err(|error| format!("Failed deriving image hash: {}", error))?;
 
-        let identifier = get_identifier(&timestamp, timestamp_digits, &hash)?;
+        let identifier = get_identifier(&timestamp, timestamp_digits, hash.as_ref())?;
 
         let verify_name = matches.is_present("verify name");
         let rename_file = matches.is_present("rename file");

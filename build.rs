@@ -6,11 +6,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .header("src/libraw.h")
         // For more information on the following blacklist see:
         // https://github.com/rust-lang/rust-bindgen/issues/687#issuecomment-316983630
-        .blacklist_item("FP_NAN")
-        .blacklist_item("FP_INFINITE")
-        .blacklist_item("FP_ZERO")
-        .blacklist_item("FP_SUBNORMAL")
-        .blacklist_item("FP_NORMAL")
+        .blocklist_item("FP_NAN")
+        .blocklist_item("FP_INFINITE")
+        .blocklist_item("FP_ZERO")
+        .blocklist_item("FP_SUBNORMAL")
+        .blocklist_item("FP_NORMAL")
         .generate()
         .map_err(|error| format!("Failed generating bindings: {:?}", error))?;
 
