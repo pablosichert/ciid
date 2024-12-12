@@ -17,7 +17,7 @@ use std::convert::TryInto;
 fn get_identifier(
     timestamp: &DateTime<FixedOffset>,
     timestamp_digits: u64,
-    hash: &[u8],
+    hash: Option<&[u8]>,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let millis: u64 = timestamp
         .timestamp_millis()
@@ -25,10 +25,15 @@ fn get_identifier(
         .map_err(|_| "Timestamps before 1970-01-01T00:00:00Z are not supported")?;
 
     let identifier = format!(
-        "{timestamp:0digits$}-{hash}",
+        "{timestamp:0digits$}{separator}{hash}",
         timestamp = millis,
         digits = timestamp_digits as usize,
-        hash = data_encoding::HEXLOWER.encode(&hash)
+        separator = if hash.is_some() { "-" } else { "" },
+        hash = if let Some(hash) = hash {
+            data_encoding::HEXLOWER.encode(hash)
+        } else {
+            "".into()
+        },
     );
 
     Ok(identifier)
@@ -283,6 +288,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("Path to image file"),
         )
         .arg(
+            Arg::with_name("no hash")
+                .long("--no-hash")
+                .help("If provided, the raw image will not be hashed, and no hash will be appended to the file name"),
+        )
+        .arg(
             Arg::with_name("verify name")
                 .long("--verify-name")
                 .help("Verifies if the provided file name is equal to the derived identifier"),
@@ -328,10 +338,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let timestamp = get_date_original(&file_path)
             .map_err(|error| format!("Failed deriving timestamp data: {}", error))?;
 
-        let hash = hash_image(&file_path)
-            .map_err(|error| format!("Failed deriving image hash: {}", error))?;
+        let hash = if !matches.is_present("no hash") {
+            Some(
+                hash_image(&file_path)
+                    .map_err(|error| format!("Failed deriving image hash: {}", error))?,
+            )
+        } else {
+            None
+        };
 
-        let identifier = get_identifier(&timestamp, timestamp_digits, hash.as_ref())?;
+        let identifier = if let Some(hash) = hash {
+            get_identifier(&timestamp, timestamp_digits, Some(&hash))?
+        } else {
+            get_identifier(&timestamp, timestamp_digits, None)?
+        };
 
         let verify_name = matches.is_present("verify name");
         let rename_file = matches.is_present("rename file");
@@ -428,10 +448,18 @@ mod tests {
     }
 
     test_get_identifier!(
+        test_get_identifier_unix_time_no_hash,
+        "1970-1-1 00:00:00.000 +00:00",
+        0,
+        None,
+        "0"
+    );
+
+    test_get_identifier!(
         test_get_identifier_unix_time,
         "1970-1-1 00:00:00.000 +00:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "0-01020304"
     );
 
@@ -439,7 +467,7 @@ mod tests {
         test_get_identifier_some_date,
         "2009-02-13 23:31:30.123 +00:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "1234567890123-01020304"
     );
 
@@ -447,7 +475,7 @@ mod tests {
         test_get_identifier_unix_time_plus_1_millisecond,
         "1970-1-1 00:00:00.001 +00:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "1-01020304"
     );
 
@@ -455,7 +483,7 @@ mod tests {
         test_get_identifier_unix_time_plus_10_milliseconds,
         "1970-1-1 00:00:00.010 +00:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "10-01020304"
     );
 
@@ -463,7 +491,7 @@ mod tests {
         test_get_identifier_unix_time_plus_1_second,
         "1970-1-1 00:00:01.000 +00:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "1000-01020304"
     );
 
@@ -471,7 +499,7 @@ mod tests {
         test_get_identifier_unix_time_plus_1_minute,
         "1970-1-1 00:01:00.000 +00:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "60000-01020304"
     );
 
@@ -479,7 +507,7 @@ mod tests {
         test_get_identifier_unix_time_plus_1_hour,
         "1970-1-1 01:00:00.000 +00:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "3600000-01020304"
     );
 
@@ -487,7 +515,7 @@ mod tests {
         test_get_identifier_unix_time_plus_1_day,
         "1970-1-2 00:00:00.000 +00:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "86400000-01020304"
     );
 
@@ -495,7 +523,7 @@ mod tests {
         test_get_identifier_unix_time_plus_1_month,
         "1970-2-1 00:00:00.000 +00:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "2678400000-01020304"
     );
 
@@ -503,7 +531,7 @@ mod tests {
         test_get_identifier_unix_time_plus_1_year,
         "1971-1-1 00:00:00.000 +00:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "31536000000-01020304"
     );
 
@@ -511,7 +539,7 @@ mod tests {
         test_get_identifier_unix_time_tz_minus_1,
         "1969-12-31 23:00:00.000 -01:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "0-01020304"
     );
 
@@ -519,7 +547,7 @@ mod tests {
         test_get_identifier_unix_time_tz_plus_1,
         "1970-1-1 01:00:00.000 +01:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "0-01020304"
     );
 
@@ -527,7 +555,7 @@ mod tests {
         test_get_identifier_pad_less,
         "1970-1-1 00:00:01.000 +00:00",
         0,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "1000-01020304"
     );
 
@@ -535,7 +563,7 @@ mod tests {
         test_get_identifier_pad_more,
         "1970-1-1 00:00:00.001 +00:00",
         10,
-        &[1, 2, 3, 4],
+        Some(&[1, 2, 3, 4]),
         "0000000001-01020304"
     );
 

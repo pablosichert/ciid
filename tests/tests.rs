@@ -33,6 +33,22 @@ fn test_print_identifier() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn test_print_identifier_no_hash() -> Result<(), Box<dyn std::error::Error>> {
+    let output = std::process::Command::new("./target/debug/ciid")
+        .arg("--no-hash")
+        .arg("--print")
+        .arg("${identifier}")
+        .arg("./tests/files/01483617175960-d4f894f5e3414125ffa2b8a94637ab44034f9de931a6ca3ef6025c97cbd28a8d.CR2")
+        .output()?;
+
+    assert_eq!(std::str::from_utf8(&output.stdout)?, "01483617175960");
+    assert_eq!(std::str::from_utf8(&output.stderr)?, "");
+    assert!(output.status.success());
+
+    Ok(())
+}
+
+#[test]
 fn test_print_date_time() -> Result<(), Box<dyn std::error::Error>> {
     let output = std::process::Command::new("./target/debug/ciid")
         .arg("--print")

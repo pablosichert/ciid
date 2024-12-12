@@ -88,12 +88,13 @@ $ ciid [FLAGS] <file path>...
 
 ## Flags
 
-| Short | Long          | Description                                                              |
-| ----- | ------------- | ------------------------------------------------------------------------ |
-| -h    | --help        | Prints help information                                                  |
-|       | --rename-file | Renames the file to the derived identifier. Preserves the file extension |
-| -V    | --version     | Prints version information                                               |
-|       | --verify-name | Verifies if the provided file name is equal to the derived identifier    |
+| Short | Long          | Description                                                                                  |
+| ----- | ------------- | -------------------------------------------------------------------------------------------- |
+| -h    | --help        | Prints help information                                                                      |
+|       | --no-hash     | If provided, the raw image will not be hashed, and no hash will be appended to the file name |
+|       | --rename-file | Renames the file to the derived identifier. Preserves the file extension                     |
+| -V    | --version     | Prints version information                                                                   |
+|       | --verify-name | Verifies if the provided file name is equal to the derived identifier                        |
 
 ## Options
 
