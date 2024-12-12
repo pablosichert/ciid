@@ -5,39 +5,7 @@ authors = ["Pablo Sichert <mail@pablosichert.com>"]
 description = """
 `ciid` is a utility to derive a chronologically sortable, unique identifier for
 images.
-
-Usually, digital cameras and phones assign file names to images with a sequence
-of only 4 digits (e.g. `IMG_1234.dng`). Those names will easily clash for any
-sufficiently large amount of images.
-
-`ciid` tackles this problem by deriving a hash from the image buffer.
-Additionally to being able to derive an identifier that is very unlikely to
-clash, this hash can later be used to check the integrity of the image content.
-
-Some image processing programs update metadata of files (e.g inline JPEG-
-previews, tags, modified date). The resulting `ciid` will be unaffected from
-those changes, since only the actual image buffer is hashed. This has the nice
-side-effect that proprietary camera RAW file formats and converted `.dng` files
-will yield the same identifier most of the time.
-
-Here's how a resulting identifier looks like:
-
-```
-01234567890123-a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1
-└─────┬──────┘ └──────────────────────────────┬───────────────────────────────┘
-  timestamp                         hash of image buffer
-```
-
-The first part of the identifier encodes the creation date of the image (a unix
-timestamp with millisecond precision), while the second part is a hash (SHA-256)
-based on the contents of the image buffer.
-
-Following criteria were considered when choosing the identifier:
-
-- have sensible alphabetical ordering on file systems (timestamps with a higher
-  value should appear strictly after lower ones)
-- encode information sufficiently compact
-- be safe to use in URLs"""
+"""
 documentation = "https://github.com/pablosichert/ciid"
 homepage = "https://github.com/pablosichert/ciid"
 repository = "https://github.com/pablosichert/ciid"
