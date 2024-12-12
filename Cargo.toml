@@ -1,6 +1,6 @@
 [package]
 name = "ciid"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Pablo Sichert <mail@pablosichert.com>"]
 description = """
 `ciid` is a utility to derive a chronologically sortable, unique identifier for
