@@ -1,44 +1,411 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
+```python
+#!/usr/bin/env python3
+# orchestrator/mama_builder.py
+# Unified Orchestrator "MAMA Builder" - All-in-one orchestration, security, node & contract management
+# Single-file CLI + minimal HTTP auth callback for mobile biometric attestation
+# Place in repo root: orchestrator/mama_builder.py
+# Usage: python mama_builder.py <command> [options]
 
-name: MSBuild
+import os
+import sys
+import json
+import time
+import uuid
+import hmac
+import base64
+import logging
+import argparse
+import subprocess
+import threading
+from typing import Dict, Any, List, Optional
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+# Optional dependencies: hvac, cryptography, requests
+try:
+    import hvac
+except Exception:
+    hvac = None
+try:
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec, padding
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+    from cryptography.exceptions import InvalidSignature
+except Exception:
+    ec = None
 
-env:
-  # Path to the solution file relative to the root of the project.
-  SOLUTION_FILE_PATH: .
+# --- Configuration (use env vars or config file in production) ---
+CONFIG_PATH = os.getenv("MAMA_CONFIG", "orchestrator/config/mama_config.json")
+VAULT_ADDR = os.getenv("VAULT_ADDR", "")
+VAULT_ROLE_ID = os.getenv("VAULT_ROLE_ID", "")
+VAULT_SECRET_ID = os.getenv("VAULT_SECRET_ID", "")
+HSM_PROVIDER = os.getenv("HSM_PROVIDER", "local")  # local | aws | azure
+TRON_NODE_PROVIDERS = os.getenv("TRON_NODE_PROVIDERS", "provider1,provider2").split(",")
+SOLUTION_SLN = os.getenv("SOLUTION_SLN", "YourSolution.sln")
+LOG_LEVEL = os.getenv("MAMA_LOG_LEVEL", "INFO")
+HTTP_BIND = os.getenv("MAMA_HTTP_BIND", "0.0.0.0")
+HTTP_PORT = int(os.getenv("MAMA_HTTP_PORT", "8081"))
+OIDC_AUDIENCE = os.getenv("OIDC_AUDIENCE", "mama-orchestrator")
+GIT_REPO = os.getenv("GIT_REPO", "")
 
-  # Configuration type to build.
-  # You can convert this to a build matrix if you need coverage of multiple configuration types.
-  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-  BUILD_CONFIGURATION: Release
+# --- Logging ---
+logging.basicConfig(level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
+                    format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("mama_builder")
 
-permissions:
-  contents: read
+# --- Utilities ---
+def load_config(path: str) -> Dict[str, Any]:
+    if not os.path.exists(path):
+        default = {
+            "nodes": [],
+            "contracts": {},
+            "wallets": {},
+            "monitoring": {"prometheus": {}, "grafana": {}},
+            "backup": {"path": "backups/"},
+        }
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(default, f, indent=2)
+        return default
+    with open(path, "r") as f:
+        return json.load(f)
 
-jobs:
-  build:
-    runs-on: windows-latest
+def save_config(path: str, cfg: Dict[str, Any]):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(cfg, f, indent=2)
 
-    steps:
-    - uses: actions/checkout@v4
+def run_cmd(cmd: List[str], cwd: Optional[str] = None, check: bool = True) -> subprocess.CompletedProcess:
+    logger.debug("Running command: %s (cwd=%s)", " ".join(cmd), cwd)
+    return subprocess.run(cmd, cwd=cwd, check=check, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1.0.2
+# --- Vault / HSM Integration (abstracted) ---
+class KeyManager:
+    def __init__(self, addr: str = VAULT_ADDR, role_id: str = VAULT_ROLE_ID, secret_id: str = VAULT_SECRET_ID):
+        self.addr = addr
+        self.role_id = role_id
+        self.secret_id = secret_id
+        self.client = None
+        self.token = None
+        if hvac and self.addr:
+            try:
+                self.client = hvac.Client(url=self.addr)
+            except Exception as e:
+                logger.warning("Vault client init failed: %s", e)
+                self.client = None
 
-    - name: Restore NuGet packages
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: nuget restore ${{env.SOLUTION_FILE_PATH}}
+    def login_approle(self):
+        if not self.client:
+            raise RuntimeError("Vault client not configured")
+        resp = self.client.auth.approle.login(role_id=self.role_id, secret_id=self.secret_id)
+        self.token = resp['auth']['client_token']
+        self.client.token = self.token
+        logger.info("Vault AppRole login successful")
 
-    - name: Build
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      # Add additional options to the MSBuild command line here (like platform or verbosity level).
-      # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
-      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
+    def transit_sign(self, key_name: str, payload_b64: str) -> str:
+        if not self.client:
+            raise RuntimeError("Vault client not configured")
+        resp = self.client.secrets.transit.sign_data(name=key_name, input=payload_b64)
+        sig = resp['data']['signature']
+        return sig
+
+    def get_public_key(self, key_name: str) -> Optional[str]:
+        if not self.client:
+            return None
+        resp = self.client.secrets.transit.read_key(name=key_name)
+        keys = resp.get('data', {}).get('keys', {})
+        latest = sorted(keys.keys())[-1]
+        pub = resp['data'].get('public_key')
+        return pub
+
+    def rotate_key(self, key_name: str):
+        if not self.client:
+            raise RuntimeError("Vault client not configured")
+        self.client.secrets.transit.rotate_key(name=key_name)
+        logger.info("Rotated Vault transit key %s", key_name)
+
+# --- Simple in-memory challenge store for mobile attestation flow ---
+_challenge_store: Dict[str, Dict[str, Any]] = {}
+
+def create_challenge(purpose: str, ttl: int = 300) -> Dict[str, Any]:
+    cid = str(uuid.uuid4())
+    challenge = base64.urlsafe_b64encode(os.urandom(32)).decode('utf-8')
+    expires = int(time.time()) + ttl
+    _challenge_store[cid] = {"challenge": challenge, "purpose": purpose, "expires": expires, "used": False}
+    logger.debug("Created challenge %s for %s", cid, purpose)
+    return {"id": cid, "challenge": challenge, "expires": expires}
+
+def verify_and_consume_challenge(cid: str, challenge_value: str) -> bool:
+    entry = _challenge_store.get(cid)
+    if not entry:
+        return False
+    if entry["used"]:
+        return False
+    if int(time.time()) > entry["expires"]:
+        return False
+    if not hmac.compare_digest(entry["challenge"], challenge_value):
+        return False
+    entry["used"] = True
+    return True
+
+# --- Minimal HTTP server to accept mobile attestation/signature ---
+class AttestationHandler(BaseHTTPRequestHandler):
+    def _send_json(self, code: int, payload: Dict[str, Any]):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(length) if length else b""
+        try:
+            data = json.loads(body.decode('utf-8') or "{}")
+        except Exception:
+            self._send_json(400, {"error": "invalid_json"})
+            return
+
+        if self.path == "/challenge":
+            purpose = data.get("purpose", "sign")
+            ch = create_challenge(purpose)
+            self._send_json(200, ch)
+            return
+
+        if self.path == "/attest":
+            cid = data.get("challenge_id")
+            challenge = data.get("challenge")
+            signature_b64 = data.get("signature")
+            pubkey_pem = data.get("public_key_pem")
+            attestation = data.get("attestation")  # optional attestation blob
+            if not cid or not challenge or not signature_b64 or not pubkey_pem:
+                self._send_json(400, {"error": "missing_fields"})
+                return
+            ok = verify_and_consume_challenge(cid, challenge)
+            if not ok:
+                self._send_json(403, {"error": "invalid_or_expired_challenge"})
+                return
+            try:
+                sig = base64.b64decode(signature_b64)
+                pub = serialization.load_pem_public_key(pubkey_pem.encode('utf-8'))
+                # verify signature over challenge
+                if isinstance(pub, ec.EllipticCurvePublicKey):
+                    pub.verify(sig, challenge.encode('utf-8'), ec.ECDSA(hashes.SHA256()))
+                else:
+                    pub.verify(sig, challenge.encode('utf-8'), padding.PKCS1v15(), hashes.SHA256())
+            except Exception as e:
+                logger.exception("Signature verification failed: %s", e)
+                self._send_json(403, {"error": "signature_invalid"})
+                return
+            # On success, return a short-lived token (opaque) for orchestrator to use
+            token = base64.urlsafe_b64encode(os.urandom(24)).decode('utf-8')
+            # store mapping for later verification (in-memory)
+            _challenge_store[token] = {"type": "attest_token", "issued_for": cid, "expires": int(time.time()) + 300}
+            self._send_json(200, {"token": token, "expires_in": 300})
+            return
+
+        self._send_json(404, {"error": "not_found"})
+
+def start_attestation_server(bind: str = HTTP_BIND, port: int = HTTP_PORT):
+    server = HTTPServer((bind, port), AttestationHandler)
+    logger.info("Starting attestation HTTP server on %s:%d", bind, port)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+# --- Node Management (skeleton) ---
+class NodeManager:
+    def __init__(self, providers: List[str]):
+        self.providers = providers
+        self.nodes = []
+
+    def provision_nodes(self, count_per_provider: int = 1):
+        for p in self.providers:
+            for i in range(count_per_provider):
+                node = {"provider": p, "id": f"{p}-node-{len(self.nodes)+1}", "status": "running"}
+                self.nodes.append(node)
+                logger.info("Provisioned node %s on %s", node["id"], p)
+        return self.nodes
+
+    def list_nodes(self):
+        return self.nodes
+
+    def status(self):
+        return {"total": len(self.nodes), "nodes": self.nodes}
+
+# --- Contract management (skeleton) ---
+class ContractManager:
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+
+    def compile_contract(self, path: str) -> str:
+        logger.info("Compiling contract %s", path)
+        # placeholder: call solc or other compiler
+        compiled_path = path + ".bin"
+        return compiled_path
+
+    def prepare_deploy_tx(self, compiled_bin: str, deployer_address: str) -> Dict[str, Any]:
+        tx = {"compiled": compiled_bin, "deployer": deployer_address, "nonce": int(time.time())}
+        return tx
+
+# --- Orchestrator core ---
+class Orchestrator:
+    def __init__(self, cfg_path: str = CONFIG_PATH):
+        self.cfg_path = cfg_path
+        self.cfg = load_config(cfg_path)
+        self.km = KeyManager()
+        self.node_mgr = NodeManager(TRON_NODE_PROVIDERS)
+        self.contract_mgr = ContractManager(self.cfg.get("contracts", {}))
+        self.attestation_server = None
+
+    def init(self):
+        save_config(self.cfg_path, self.cfg)
+        logger.info("Initialized orchestrator config at %s", self.cfg_path)
+
+    def start_attestation(self):
+        if not self.attestation_server:
+            self.attestation_server = start_attestation_server()
+            logger.info("Attestation server started")
+        else:
+            logger.info("Attestation server already running")
+
+    def provision_nodes(self, count_per_provider: int = 1):
+        return self.node_mgr.provision_nodes(count_per_provider)
+
+    def deploy_contract(self, sol_path: str, deployer_pubkey_pem: str, attest_token: str):
+        token_entry = _challenge_store.get(attest_token)
+        if not token_entry or token_entry.get("type") != "attest_token":
+            raise RuntimeError("Invalid attestation token")
+        if int(time.time()) > token_entry.get("expires", 0):
+            raise RuntimeError("Attestation token expired")
+        # compile
+        compiled = self.contract_mgr.compile_contract(sol_path)
+        tx = self.contract_mgr.prepare_deploy_tx(compiled, deployer_pubkey_pem)
+        # create payload and request signature via Vault or mobile attestation
+        payload = json.dumps(tx).encode('utf-8')
+        payload_b64 = base64.b64encode(payload).decode('utf-8')
+        # Prefer Vault transit signing if configured
+        if self.km.client:
+            sig = self.km.transit_sign(key_name="deploy-key", payload_b64=payload_b64)
+            logger.info("Signed deploy tx via Vault transit")
+            return {"tx": tx, "signature": sig}
+        # Otherwise, require mobile attestation token to have been used to sign externally
+        logger.info("No Vault configured; expecting external signature flow")
+        return {"tx": tx, "signature": None}
+
+    def sign_and_broadcast(self, payload: bytes, signature_b64: Optional[str] = None):
+        if signature_b64:
+            sig = signature_b64
+        else:
+            # fallback to Vault transit
+            payload_b64 = base64.b64encode(payload).decode('utf-8')
+            if self.km.client:
+                sig = self.km.transit_sign("tx-key", payload_b64)
+            else:
+                raise RuntimeError("No signing method available")
+        # broadcast placeholder
+        logger.info("Broadcasting tx with signature %s", sig[:32] if sig else "none")
+        return {"status": "broadcasted", "signature": sig}
+
+    def backup(self, dest: Optional[str] = None):
+        dest = dest or self.cfg.get("backup", {}).get("path", "backups/")
+        os.makedirs(dest, exist_ok=True)
+        fname = os.path.join(dest, f"cfg-backup-{int(time.time())}.json")
+        save_config(fname, self.cfg)
+        logger.info("Backup saved to %s", fname)
+        return fname
+
+    def restore(self, backup_file: str):
+        if not os.path.exists(backup_file):
+            raise FileNotFoundError(backup_file)
+        with open(backup_file, "r") as f:
+            self.cfg = json.load(f)
+        save_config(self.cfg_path, self.cfg)
+        logger.info("Restored config from %s", backup_file)
+        return True
+
+    def rotate_keys(self, key_name: str):
+        if self.km.client:
+            self.km.rotate_key(key_name)
+            logger.info("Requested key rotation for %s", key_name)
+            return True
+        raise RuntimeError("Vault not configured")
+
+    def status(self):
+        return {
+            "config_path": self.cfg_path,
+            "nodes": self.node_mgr.status(),
+            "vault": bool(self.km.client),
+            "attestation_server": bool(self.attestation_server),
+        }
+
+# --- CLI ---
+def parse_args():
+    p = argparse.ArgumentParser(prog="mama_builder", description="MAMA Builder orchestrator CLI")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("init")
+    sub.add_parser("start-attest")
+    prov = sub.add_parser("provision-nodes")
+    prov.add_argument("--count", type=int, default=1)
+
+    deploy = sub.add_parser("deploy-contract")
+    deploy.add_argument("--sol", required=True)
+    deploy.add_argument("--deployer-pub", required=False)
+    deploy.add_argument("--attest-token", required=False)
+
+    sign = sub.add_parser("sign-and-broadcast")
+    sign.add_argument("--payload-file", required=True)
+    sign.add_argument("--signature-b64", required=False)
+
+    sub.add_parser("backup")
+    restore = sub.add_parser("restore")
+    restore.add_argument("--file", required=True)
+
+    rotate = sub.add_parser("rotate-keys")
+    rotate.add_argument("--key", required=True)
+
+    sub.add_parser("status")
+    return p.parse_args()
+
+def main():
+    args = parse_args()
+    orch = Orchestrator()
+    if args.cmd == "init":
+        orch.init()
+        print("ok")
+        return
+    if args.cmd == "start-attest":
+        orch.start_attestation()
+        print(f"attestation_server=http://{HTTP_BIND}:{HTTP_PORT}")
+        return
+    if args.cmd == "provision-nodes":
+        nodes = orch.provision_nodes(count_per_provider=args.count)
+        print(json.dumps(nodes, indent=2))
+        return
+    if args.cmd == "deploy-contract":
+        res = orch.deploy_contract(sol_path=args.sol, deployer_pubkey_pem=args.deployer_pub, attest_token=args.attest_token)
+        print(json.dumps(res, indent=2))
+        return
+    if args.cmd == "sign-and-broadcast":
+        with open(args.payload_file, "rb") as f:
+            payload = f.read()
+        res = orch.sign_and_broadcast(payload, signature_b64=args.signature_b64)
+        print(json.dumps(res, indent=2))
+        return
+    if args.cmd == "backup":
+        path = orch.backup()
+        print(path)
+        return
+    if args.cmd == "restore":
+        orch.restore(args.file)
+        print("restored")
+        return
+    if args.cmd == "rotate-keys":
+        orch.rotate_keys(args.key)
+        print("rotated")
+        return
+    if args.cmd == "status":
+        print(json.dumps(orch.status(), indent=2))
+        return
+
+if __name__ == "__main__":
+    main()
+```
